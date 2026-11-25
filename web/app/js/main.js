@@ -1,5 +1,12 @@
 import { api, ApiError } from "./api.js";
-import { byId, dialogById, errorMessage, h, inputById } from "./dom.js";
+import {
+  byId,
+  dialogById,
+  errorMessage,
+  h,
+  humanize,
+  inputById,
+} from "./dom.js";
 import { familyOf, FAMILIES } from "./catalog.js";
 import { closeDrawer, initDrawer, launchTool } from "./runner.js";
 import { recordEvidence, set, state, subscribe } from "./store.js";
@@ -8,6 +15,7 @@ import { renderEvidence } from "./views/evidence.js";
 import { renderSetup } from "./views/setup.js";
 import { renderTargets } from "./views/targets.js";
 import { renderTools } from "./views/tools.js";
+import { renderWorkflows } from "./views/workflows.js";
 import { renderWorkspace } from "./views/workspace.js";
 
 const VIEWS = {
@@ -25,6 +33,11 @@ const VIEWS = {
     title: "Tools",
     subtitle: "Every capability REA advertises, with schema-driven inputs.",
     render: renderTools,
+  },
+  workflows: {
+    title: "Workflows",
+    subtitle: "REA's own instructions for a situation, with your arguments.",
+    render: renderWorkflows,
   },
   evidence: {
     title: "Evidence",
@@ -66,6 +79,7 @@ const boot = async () => {
     set({
       tools: session.tools,
       toolsByName: new Map(session.tools.map((tool) => [tool.name, tool])),
+      prompts: session.prompts ?? [],
       sessionReady: true,
       sessionError: null,
     });
@@ -186,6 +200,19 @@ const buildPaletteItems = (query) => {
       run: () => setView(id),
     });
   const needle = query.trim().toLowerCase();
+  for (const prompt of state.prompts ?? []) {
+    if (
+      needle.length > 0 &&
+      !`${prompt.name} ${prompt.title}`.toLowerCase().includes(needle)
+    )
+      continue;
+    items.push({
+      kind: "workflow",
+      label: prompt.title ?? humanize(prompt.name),
+      hint: prompt.name,
+      run: () => setView("workflows"),
+    });
+  }
   for (const tool of state.tools) {
     if (
       needle.length > 0 &&

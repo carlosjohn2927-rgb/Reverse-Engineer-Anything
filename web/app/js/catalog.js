@@ -5,73 +5,7 @@
  * which tools "should" work.
  */
 
-/** Display order and copy for tool families. */
-export const FAMILIES = [
-  {
-    id: "artifacts",
-    label: "Files & artifacts",
-    blurb: "Inventory, headers and container facts for any local file.",
-    test: (name) =>
-      /^inspect_(artifact|binary_layout|byte_entropy|native_exports|elf_notes|pe_|go_binary|rust_binary|model_artifact|gpu_code_objects|erlang_beam|python_pyc|il2cpp_metadata|managed_|apk_signature|sqlite_database|evm_interface|wasm_artifact)/u.test(
-        name,
-      ) ||
-      /^(extract_artifact|compare_managed_members|decode_interface_builder|inspect_keyed_archive|inspect_devicetree|inspect_kernel_module|inspect_apple_ips)$/u.test(
-        name,
-      ),
-  },
-  {
-    id: "applications",
-    label: "Applications",
-    blurb: "Reconstruct JavaScript, Electron, .NET, Flutter and Android apps.",
-    test: (name) =>
-      /^(analyze_javascript_application|inspect_desktop_application|identify_flutter_build|inspect_dart_aot|inspect_electron_fuses|inspect_android_package|inspect_apktool_client|decode_android_resources|analyze_web_bundle|project_.*_graph|trace_application_feature|compare_application_versions|recover_javascript_sources)$/u.test(
-        name,
-      ),
-  },
-  {
-    id: "native",
-    label: "Native analysis",
-    blurb: "Pseudocode, assembly, xrefs and call paths through a decompiler.",
-    test: (name) =>
-      /^(open_binary|close_binary|binary_session|binary_overview|analyze_function|decompile_all|batch_decompile|procedure_|list_procedures|search_procedures|search_strings|list_strings|list_segments|list_documents|read_bytes|read_function|xrefs|get_call_graph|resolve_|address_|trace_feature|trace_call_path|trace_native|inspect_native_(instruction|data_type|load_image|api|dispatch)|annotate_native_function|get_objc|inspect_macho|demangle_swift|search_bytes|current_|goto_address|next_address|prev_address|set_|unset_|list_names|list_bookmarks|comment|inline_comment|address_name|procedure_address|inspect_analysis_view|inspect_analysis_settings|update_analysis_settings|compare_functions|match_native_functions|build_call_path|correlate_static|verify_reconstruction|list_unknowns|record_unknown|update_unknown|verify_unknown|get_navigation_context|inspect_address_context|find_changed_behavior|inspect_with_objdump|execute_rizin_command|compare_bundles)$/u.test(
-        name,
-      ),
-  },
-  {
-    id: "runtime",
-    label: "Runtime & capture",
-    blurb: "Observe processes, browser pages, captures and devices.",
-    test: (name) =>
-      /^(capture_|observe_|list_browser_targets|inspect_web_page|inspect_web_network_capture|inspect_web_event_listeners|observe_web_execution|trace_web_|discover_webmcp_tools|export_web_scripts|compare_web_|compare_process|inspect_pcap|inspect_packet|decode_signal|inspect_signal|inspect_recorded_crash|list_frida|start_frida|load_frida|resume_frida|unload_frida|frida_session|close_frida|instrument_with_frida|list_adb|pull_adb|push_adb|read_adb|inspect_adb|install_adb|uninstall_adb|start_adb|stop_adb|collect_adb|resolve_adb|list_cutter|cutter_command|.*_gdb.*|.*_rizin_debug.*|inspect_dart_aot)/u.test(
-        name,
-      ),
-  },
-  {
-    id: "evidence",
-    label: "Evidence & sessions",
-    blurb: "Export, import and compare the records behind each result.",
-    test: (name) =>
-      /^(get_evidence_bundle|export_evidence_bundle|import_evidence_bundle|evidence_|compare|environment_|build_reconstruction|evaluate_reconstruction|import_managed|import_reference|open_bundle|list_documents|binary_session)$/u.test(
-        name,
-      ),
-  },
-  {
-    id: "guidance",
-    label: "Guidance",
-    blurb: "REA's own workflow instructions for a given investigation.",
-    test: (name) =>
-      /^(search_guidance|read_guidance_section|guided_workflows)$/u.test(name),
-  },
-  {
-    id: "firmware",
-    label: "Firmware & embedded",
-    blurb: "Regions, extraction and handoffs for device images.",
-    test: (name) => /^(inspect_firmware_regions|extract_firmware)$/u.test(name),
-  },
-];
-
-export const familyOf = (toolName) =>
-  FAMILIES.find((family) => family.test(toolName))?.id ?? "other";
+export { FAMILIES, familyOf, classifiedToolNames } from "./families.js";
 
 /** Artifact kinds the workspace can recognise from an extension. */
 export const ARTIFACT_KINDS = [

@@ -274,6 +274,20 @@ export const launchTool = async (
           text: "Needs a device, browser or provider on the host",
         })
       : null,
+    tool.annotations?.destructiveHint === true
+      ? h("p", {
+          class: "badge warn",
+          title: "MCP annotation: destructiveHint",
+          text: "Edits analysis state. Original artifact bytes are not modified.",
+        })
+      : null,
+    tool.annotations?.openWorldHint === true
+      ? h("p", {
+          class: "badge",
+          title: "MCP annotation: openWorldHint",
+          text: "Reaches a device, browser, engine or network target.",
+        })
+      : null,
   );
 
   form.addEventListener("submit", async (event) => {

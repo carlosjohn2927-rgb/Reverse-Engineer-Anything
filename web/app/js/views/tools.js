@@ -107,6 +107,7 @@ export const renderTools = (root) => {
               tool.hostDependent
                 ? h("span", { class: "badge warn", text: "host" })
                 : null,
+              ...annotationBadges(tool),
             ),
             h("span", {
               class: "muted blurb",
@@ -137,6 +138,39 @@ export const renderTools = (root) => {
   );
   root.replaceChildren(container);
   return { container };
+};
+
+/**
+ * MCP annotations REA publishes for every tool. They are the difference between
+ * a read-only inspection and a call that rewrites the session's analysis state,
+ * so show the ones that change what a click will do. `idempotentHint` is left
+ * out: it tells you nothing about safety.
+ *
+ * @param {import("../store.js").Tool} tool
+ */
+const annotationBadges = (tool) => {
+  const annotations = tool.annotations;
+  if (annotations === undefined || annotations === null) return [];
+  const badges = [];
+  if (annotations.readOnlyHint === true)
+    badges.push(h("span", { class: "badge ok", text: "read-only" }));
+  if (annotations.destructiveHint === true)
+    badges.push(
+      h("span", {
+        class: "badge warn",
+        title: "Edits analysis state; original bytes are not modified.",
+        text: "edits state",
+      }),
+    );
+  if (annotations.openWorldHint === true)
+    badges.push(
+      h("span", {
+        class: "badge",
+        title: "Reaches a device, browser, engine or network target.",
+        text: "open world",
+      }),
+    );
+  return badges;
 };
 
 const defaultArgs = (tool) => {

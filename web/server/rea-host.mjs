@@ -92,6 +92,33 @@ export class ReaSession {
     }
   }
 
+  /**
+   * Fetch one MCP prompt: REA's own instructions for a situation, with the
+   * caller's arguments substituted. Prompts do not run analysis, so they are
+   * not counted toward the tool-call concurrency limit, but they share the
+   * session's cancellation set so a disconnect stops them too.
+   */
+  async callPrompt(
+    name,
+    args,
+    /** @type {{ signal?: AbortSignal }} */ { signal } = {},
+  ) {
+    if (this.#state !== "ready")
+      throw new Error("The analysis session is not ready.");
+    this.#lastUsedAt = Date.now();
+    const controller = new AbortController();
+    this.#calls.add(controller);
+    try {
+      return await this.#client.request(
+        "prompts/get",
+        { name, arguments: args },
+        { signal: signal ?? controller.signal },
+      );
+    } finally {
+      this.#calls.delete(controller);
+    }
+  }
+
   /** Stop the child process and remove the session workspace. */
   async close() {
     if (this.#closed) return;

@@ -211,6 +211,12 @@ export const createApi = ({ config, host, log }) => {
     try {
       const session = await host.createSession();
       const tools = await session.client.request("tools/list", {});
+      // Prompts are advertised by every REA server (`prompts.listChanged`), so
+      // read them here rather than leaving the workspace blind to them. A
+      // server that omits the capability must not fail the whole session.
+      const prompts = await session.client
+        .request("prompts/list", {})
+        .catch(() => ({ prompts: [] }));
       sendJson(response, 201, {
         sessionId: session.id,
         tools: tools.tools.map((tool) => ({
@@ -222,6 +228,16 @@ export const createApi = ({ config, host, log }) => {
           annotations: tool.annotations ?? null,
           cli: `rea ${cliCommandFor(tool.name)}`,
           hostDependent: isHostDependent(tool.name),
+        })),
+        prompts: (prompts.prompts ?? []).map((prompt) => ({
+          name: prompt.name,
+          title: prompt.title ?? prompt.name,
+          description: prompt.description ?? "",
+          arguments: (prompt.arguments ?? []).map((argument) => ({
+            name: argument.name,
+            description: argument.description ?? "",
+            required: argument.required === true,
+          })),
         })),
       });
     } catch (error) {
@@ -238,6 +254,53 @@ export const createApi = ({ config, host, log }) => {
     const id = request.headers["x-rea-session"];
     if (typeof id === "string") await host.closeSession(id);
     response.writeHead(204).end();
+  });
+
+  // ---- Prompts ------------------------------------------------------------
+  // REA's six guided workflows are MCP prompts: the server returns REA's own
+  // instructions for a situation, with the caller's arguments substituted.
+  route("POST", "/api/prompt", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const name = body?.prompt;
+    const args = body?.arguments ?? {};
+    if (typeof name !== "string" || name.length === 0)
+      return sendError(
+        response,
+        400,
+        "prompt_missing",
+        "Name a prompt to get.",
+      );
+    if (typeof args !== "object" || args === null || Array.isArray(args))
+      return sendError(
+        response,
+        400,
+        "arguments_invalid",
+        "Arguments must be an object.",
+      );
+    try {
+      const result = await session.callPrompt(name, args);
+      sendJson(response, 200, {
+        prompt: name,
+        description: result.description ?? "",
+        messages: (result.messages ?? []).map((message) => ({
+          role: message.role ?? "user",
+          text:
+            typeof message.content?.text === "string"
+              ? message.content.text
+              : typeof message.content === "string"
+                ? message.content
+                : "",
+        })),
+      });
+    } catch (error) {
+      sendError(
+        response,
+        502,
+        "prompt_failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   });
 
   // ---- Tool calls ---------------------------------------------------------

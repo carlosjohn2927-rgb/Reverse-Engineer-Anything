@@ -81,7 +81,13 @@ export const api = {
   workspace: () => request("/api/workspace"),
 
   async startSession() {
-    /** @type {{ sessionId: string, tools: import("./store.js").Tool[] }} */
+    /**
+     * @type {{
+     *   sessionId: string,
+     *   tools: import("./store.js").Tool[],
+     *   prompts: import("./store.js").Prompt[],
+     * }}
+     */
     const payload = await request("/api/sessions", { method: "POST" });
     sessionId = payload.sessionId;
     return payload;
@@ -104,6 +110,19 @@ export const api = {
   async upload(file, onProgress) {
     return streamUpload(file, onProgress);
   },
+
+  /**
+   * Fetch one MCP prompt, i.e. REA's own instructions for a situation.
+   *
+   * @param {string} prompt
+   * @param {Record<string, string>} [args]
+   * @returns {Promise<{ prompt: string, description: string, messages: { role: string, text: string }[] }>}
+   */
+  getPrompt: (prompt, args) =>
+    request("/api/prompt", {
+      method: "POST",
+      body: JSON.stringify({ prompt, arguments: args ?? {} }),
+    }),
 
   samples: () =>
     request("/api/samples", { method: "POST", body: JSON.stringify({}) }),

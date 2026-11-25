@@ -12,8 +12,26 @@ const listeners = new Set();
  *   description?: string,
  *   cli?: string,
  *   hostDependent?: boolean,
+ *   annotations?: {
+ *     readOnlyHint?: boolean,
+ *     destructiveHint?: boolean,
+ *     idempotentHint?: boolean,
+ *     openWorldHint?: boolean,
+ *   } | null,
  *   inputSchema?: { type?: string, properties?: Record<string, any>, required?: string[] },
  * }} Tool
+ */
+
+/**
+ * One advertised MCP prompt: REA's instructions for a situation, with
+ * arguments the caller fills in.
+ *
+ * @typedef {{
+ *   name: string,
+ *   title?: string,
+ *   description?: string,
+ *   arguments?: { name: string, description?: string, required?: boolean }[],
+ * }} Prompt
  */
 
 /**
@@ -53,6 +71,7 @@ const listeners = new Set();
  *   doctor: any,
  *   tools: Tool[],
  *   toolsByName: Map<string, Tool>,
+ *   prompts: Prompt[],
  *   sessionReady: boolean,
  *   sessionError: string | null,
  *   targets: Target[],
@@ -78,6 +97,7 @@ export const state = {
   doctor: null,
   tools: [],
   toolsByName: new Map(),
+  prompts: [],
   sessionReady: false,
   sessionError: null,
   targets: [],
