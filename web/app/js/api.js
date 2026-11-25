@@ -147,6 +147,47 @@ export const api = {
   hostIntegrations: () => request("/api/host-integrations"),
 
   /**
+   * Export the session's canonical Evidence bundle.
+   *
+   * REA only exports by absolute local path, which a browser cannot name, so
+   * the server picks the path and returns the bytes; this is the only way the
+   * web app can hand a user a bundle REA itself will accept back.
+   *
+   * @param {string} [name] destination filename inside the session workspace
+   * @returns {Promise<{ name: string, path: string, bytes: number, sha256: string, contents: string, receipt: { records: number, unknowns: number, bytes: number, empty: boolean, summary: string } | null }>}
+   */
+  exportEvidenceBundle: (name) =>
+    request("/api/evidence/export", {
+      method: "POST",
+      body: JSON.stringify(name === undefined ? {} : { name }),
+    }),
+
+  /**
+   * Import an Evidence bundle the user chose. REA validates the whole file
+   * before merging anything, so a rejected bundle leaves the session unchanged.
+   *
+   * @param {File} file
+   * @returns {Promise<{ staged: { path: string, name: string, bytes: number, sha256: string }, accepted: boolean, result: unknown, rejection: { code: string, message: string | null, remediation: string | null } | null }>}
+   */
+  importEvidenceBundle: async (file) => {
+    const response = await fetch(
+      `/api/evidence/import?filename=${encodeURIComponent(file.name)}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/octet-stream" },
+        body: file,
+      },
+    );
+    const payload = await response.json();
+    if (!response.ok)
+      throw new ApiError(payload?.error?.message ?? "Import failed.", {
+        code: payload?.error?.code,
+        status: response.status,
+      });
+    return payload;
+  },
+
+  /**
    * Per-operation capability readiness from `rea capabilities`.
    *
    * @returns {Promise<{

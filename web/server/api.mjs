@@ -6,6 +6,13 @@ import { randomUUID } from "node:crypto";
 import { readJsonBody, sendError, sendJson } from "./http.mjs";
 import { generateSamples } from "./samples.mjs";
 import { describeTree, sha256File, stageUpload } from "./sources.mjs";
+import {
+  BUNDLE_DOWNLOAD_NAME,
+  bundlePathIn,
+  describeReceipt,
+  readExportedBundle,
+  stageBundleUpload,
+} from "./evidence-bundle.mjs";
 
 /** Tools that only make sense for a registered desktop or mobile device. */
 const HOST_DEPENDENT_PREFIXES = [
@@ -664,6 +671,148 @@ export const createApi = ({ config, host, log }) => {
       sha256: await sha256File(destination),
     });
   });
+
+  // ---- Evidence bundles ------------------------------------------------
+  //
+  // REA exports and imports bundles by absolute local path. A browser cannot
+  // name one and cannot read one back, so these two routes are the only way an
+  // evidence bundle can cross into or out of the web app. The path is always
+  // chosen here, inside the session workspace: the request never supplies one.
+
+  /** Write the session's canonical bundle and return it as a download. */
+  route("POST", "/api/evidence/export", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const destination = bundlePathIn(
+      session.workspace,
+      typeof body?.name === "string" ? body.name : BUNDLE_DOWNLOAD_NAME,
+    );
+    // REA refuses to write into a directory that does not exist yet, and a
+    // fresh session has no workspace until something is placed in it.
+    await mkdir(session.workspace, { recursive: true });
+    const result = projectCall(
+      await session.callTool(
+        "export_evidence_bundle",
+        { path: destination, overwrite: true },
+        {},
+      ),
+    );
+    if (result.status !== "ok") {
+      sendError(
+        response,
+        502,
+        "bundle_export_failed",
+        String(
+          result.error?.message ?? "REA did not export the evidence bundle.",
+        ),
+        { remediation: result.error?.remediation ?? null },
+      );
+      return;
+    }
+    try {
+      const file = await readExportedBundle(destination, session.workspace);
+      sendJson(response, 200, {
+        name: file.name,
+        path: file.path,
+        bytes: file.bytes,
+        sha256: file.sha256,
+        contents: file.contents,
+        receipt: describeReceipt(/** @type {any} */ (result.payload)),
+      });
+    } catch (error) {
+      sendError(
+        response,
+        502,
+        "bundle_read_failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  });
+
+  /**
+   * Stage an uploaded bundle and ask REA to import it. Validation happens
+   * inside REA before anything merges, so a rejected bundle changes nothing.
+   */
+  route(
+    "PUT",
+    "/api/evidence/import",
+    async (request, response, _body, url) => {
+      const session = await sessionOf(request, response, undefined);
+      if (session === undefined) return;
+      const name = url.searchParams.get("filename") ?? BUNDLE_DOWNLOAD_NAME;
+      const temporary = join(session.workspace, `${randomUUID()}.partial`);
+      await mkdir(session.workspace, { recursive: true });
+      const limit = config.uploadLimitBytes;
+      let received = 0;
+      const out = createWriteStream(temporary);
+      try {
+        for await (const chunk of request) {
+          received += chunk.length;
+          if (received > limit) {
+            out.destroy();
+            const { rm } = await import("node:fs/promises");
+            await rm(temporary, { force: true });
+            return sendError(
+              response,
+              413,
+              "upload_too_large",
+              `Evidence bundles are limited to ${Math.round(limit / (1024 * 1024))} MiB.`,
+            );
+          }
+          if (!out.write(chunk))
+            await new Promise((resolve) =>
+              out.once("drain", () => resolve(undefined)),
+            );
+        }
+        await new Promise((resolve, reject) => {
+          out.end(
+            /** @param {Error | null | undefined} error */
+            (error) =>
+              error === undefined || error === null
+                ? resolve(undefined)
+                : reject(error),
+          );
+        });
+        const staged = await stageBundleUpload(
+          session.workspace,
+          temporary,
+          name,
+        );
+        const { rm } = await import("node:fs/promises");
+        await rm(temporary, { force: true });
+        const result = projectCall(
+          await session.callTool(
+            "import_evidence_bundle",
+            { path: staged.path },
+            {},
+          ),
+        );
+        // A rejected bundle is a verdict about the file, not a server failure.
+        // It is reported at 200 with its own code so the UI can quote REA.
+        sendJson(response, 200, {
+          staged,
+          accepted: result.status === "ok",
+          result: result.status === "ok" ? (result.payload ?? null) : null,
+          rejection:
+            result.status === "ok"
+              ? null
+              : {
+                  code: result.error?.code ?? "import_rejected",
+                  message: result.error?.message ?? null,
+                  remediation: result.error?.remediation ?? null,
+                },
+        });
+      } catch (error) {
+        out.destroy();
+        sendError(
+          response,
+          502,
+          "bundle_import_failed",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    },
+  );
 
   route("GET", "/api/workspace", async (request, response) => {
     const session = await sessionOf(request, response, undefined);

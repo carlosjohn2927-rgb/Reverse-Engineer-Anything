@@ -62,6 +62,7 @@ app/js/families.js      tool -> family map, checked complete by the tests
 app/js/completions.js   prompt argument -> completion kind, pinned to REA's contract
 app/js/readiness.js     per-operation readiness projection (available/unavailable/unverified)
 app/js/host-integrations.js which host runtimes gate which tools, and how to configure them
+app/js/evidence-bundle.js what a bundle transfer can and cannot claim
 app/js/views/*.js       one module per view
 app/js/render/          evidence projections (managed, go, sqlite, entropy, …)
 server/index.mjs        HTTP server, CORS, preview framing, shutdown
@@ -70,6 +71,7 @@ server/api.mjs          routes: status, doctor, capabilities, host integrations,
 server/rea-host.mjs     one REA MCP child process per browser session
 server/mcp.mjs          raw JSON-RPC client for REA's streamable HTTP MCP mode
 server/samples.mjs      the built-in sample artifacts, generated locally
+server/evidence-bundle.mjs turns a browser download into an absolute path and back
 ```
 
 The browser never talks to REA's MCP port directly — it calls this server,
@@ -98,7 +100,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs nine suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs ten suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -137,7 +139,18 @@ it never spawns a runtime, so it cannot prove one works, and the payload always
 says `verified: false`. The panel therefore states configuration, not
 availability, and gives no configured runtime a green dot. On this host all ten
 settings are unset and only `objdump` is on `PATH`: one configured, nine not,
-and none verified. The runner shuts the server down afterwards and fails if any
+and none verified. `evidence-bundle` covers a bug that shipped: the Evidence
+view's "Download bundle" button built its own JSON (`rea-web-evidence-summary`)
+instead of asking REA, and REA rejects that file with
+`evidence_integrity_mismatch` — so a download that looked like archived
+evidence could never be imported. REA's four bundle tools all take absolute
+local paths, which a browser cannot name or read back; `POST
+/api/evidence/export` and `PUT /api/evidence/import` bridge that by choosing a
+path inside the session workspace and serving REA's bytes unmodified. The suite
+asserts the old shape is still rejected, that an exported bundle has REA's
+exact seven-array shape and reimports, that a rejection keeps REA's own code
+and merges nothing, and that an empty bundle is reported as valid rather than
+as a failure. The runner shuts the server down afterwards and fails if any
 REA child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
