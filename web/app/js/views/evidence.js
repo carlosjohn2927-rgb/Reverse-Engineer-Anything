@@ -47,7 +47,7 @@ export const renderEvidence = (root) => {
         "Evidence",
         `${state.evidence.length} record${state.evidence.length === 1 ? "" : "s"} retained in this session`,
       ),
-      bundleTransferPanel(root),
+      bundleTransferPanel(),
       h(
         "div",
         { class: "tree-toolbar" },
@@ -133,10 +133,8 @@ export { copyButton };
  * believed they had saved evidence. The panel below replaces it: the server
  * picks a workspace path, REA writes the canonical bundle there, and the bytes
  * served back are the ones REA wrote.
- *
- * @param {HTMLElement} root
  */
-const bundleTransferPanel = (root) => {
+const bundleTransferPanel = () => {
   const status = h("p", { class: "faint small", text: BUNDLE_TRANSFER_NOTE });
   const outcome = h("div", { class: "bundle-outcome" });
   const fileInput = /** @type {HTMLInputElement} */ (
