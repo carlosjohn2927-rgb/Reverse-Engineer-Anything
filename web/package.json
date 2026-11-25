@@ -1,0 +1,20 @@
+{
+  "name": "rea-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local web workspace for REA: inspect binaries, applications and runtime behavior from the browser",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
+  },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node --watch-path=server server/index.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "oxlint --config ../.oxlintrc.json app server",
+    "format": "oxfmt app server",
+    "format:check": "oxfmt --check app server",
+    "test": "node test/run.mjs"
+  }
+}

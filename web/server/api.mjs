@@ -1,0 +1,507 @@
+import { createWriteStream } from "node:fs";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+
+import { readJsonBody, sendError, sendJson } from "./http.mjs";
+import { generateSamples } from "./samples.mjs";
+import { describeTree, sha256File, stageUpload } from "./sources.mjs";
+
+/** Tools that only make sense for a registered desktop or mobile device. */
+const HOST_DEPENDENT_PREFIXES = [
+  "adb_",
+  "capture_adb",
+  "read_adb",
+  "pull_adb",
+  "push_adb",
+  "install_adb",
+  "uninstall_adb",
+  "start_adb",
+  "stop_adb",
+  "collect_adb",
+  "resolve_adb",
+  "list_adb",
+  "inspect_adb",
+  "gdb_",
+  "start_gdb",
+  "close_gdb",
+  "rizin_debug",
+  "start_rizin",
+  "close_rizin",
+  "list_frida",
+  "start_frida",
+  "frida_session",
+  "load_frida",
+  "unload_frida",
+  "resume_frida",
+  "instrument_with_frida",
+  "list_cutter",
+  "cutter_command",
+  "list_jeb",
+  "open_jeb",
+  "decompile_jeb",
+  "inspect_jeb",
+  "start_browser",
+  "list_browser",
+  "capture_browser",
+  "observe_web_session",
+  "inspect_web_page",
+  "discover_webmcp_tools",
+];
+
+const isHostDependent = (name) =>
+  HOST_DEPENDENT_PREFIXES.some((prefix) => name.startsWith(prefix));
+
+/** Normalize an MCP tool name to its kebab-case CLI command. */
+export const cliCommandFor = (toolName) => toolName.replaceAll("_", "-");
+
+/** Turn a tool result into the shape the browser renders. */
+const projectCall = (result) => {
+  if (result === undefined)
+    return { status: "empty", payload: null, error: null };
+  const text = Array.isArray(result.content)
+    ? result.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("\n")
+    : "";
+  let payload = result.structuredContent ?? null;
+  if (payload === null && text.length > 0) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { text };
+    }
+  }
+  const envelope = payload?.error === undefined ? null : payload.error;
+  const isError = result.isError === true || envelope !== null;
+  return {
+    status: isError ? "error" : "ok",
+    payload: isError ? null : payload,
+    error: isError
+      ? {
+          code: envelope?.code ?? "tool_error",
+          category: envelope?.category ?? "failure",
+          message:
+            envelope?.message ?? (text.length > 0 ? text : "The tool failed."),
+          remediation: envelope?.remediation?.action ?? null,
+          retryable: envelope?.retryable === true,
+          details: envelope?.details ?? null,
+        }
+      : null,
+    provenance: result._meta?.provenance ?? null,
+  };
+};
+
+/** Routes that need a live REA session. */
+export const createApi = ({ config, host, log }) => {
+  const routes = new Map();
+
+  const route = (method, path, handler) => {
+    routes.set(`${method} ${path}`, handler);
+  };
+
+  const sessionOf = async (request, response, body) => {
+    const id = body?.sessionId ?? request.headers["x-rea-session"];
+    if (typeof id !== "string") {
+      sendError(response, 400, "session_missing", "Create a session first.");
+      return undefined;
+    }
+    const session = await host.getSession(id);
+    if (session === undefined) {
+      sendError(
+        response,
+        410,
+        "session_expired",
+        "This analysis session ended. Start a new session.",
+      );
+      return undefined;
+    }
+    return session;
+  };
+
+  // ---- Runtime status -----------------------------------------------------
+  route("GET", "/api/status", async (_request, response) => {
+    const node = await host.ready();
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const run = promisify(execFile);
+    /** @type {string | null} */
+    let reaVersion = null;
+    try {
+      const { stdout } = await run(node, [config.reaEntry, "--version"], {
+        timeout: 20_000,
+      });
+      reaVersion = stdout.trim();
+    } catch {
+      reaVersion = null;
+    }
+    /** @type {string | null} */
+    let nodeVersion = null;
+    try {
+      const { stdout } = await run(node, ["--version"], { timeout: 10_000 });
+      nodeVersion = stdout.trim();
+    } catch {
+      nodeVersion = null;
+    }
+    sendJson(response, 200, {
+      rea: { version: reaVersion, built: reaVersion !== null },
+      runtime: {
+        nodeVersion,
+        executable: node,
+        server: process.version,
+        provisioned: node !== process.execPath,
+      },
+      sessions: host.sessionCount,
+      sessionDetail: host.describeSessions(),
+      platform: process.platform,
+      repositoryRoot: config.repositoryRoot,
+    });
+  });
+
+  /** Run `rea doctor` through the resolved runtime. */
+  route("GET", "/api/doctor", async (_request, response) => {
+    const node = await host.ready();
+    const { spawn } = await import("node:child_process");
+    const child = spawn(node, [config.reaEntry, "doctor", "--format", "json"], {
+      cwd: config.repositoryRoot,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    await new Promise((resolve) => child.on("exit", resolve));
+    try {
+      sendJson(response, 200, JSON.parse(stdout));
+    } catch {
+      sendJson(response, 200, {
+        healthy: false,
+        scope_checks: [],
+        providerInspections: [],
+        raw: `${stdout}\n${stderr}`.trim().slice(0, 20_000),
+      });
+    }
+  });
+
+  /** Provision the Node.js 24 runtime used for REA child processes. */
+  route("POST", "/api/runtime/install", async (_request, response) => {
+    const { provisionNode24 } = await import("./runtime.mjs");
+    try {
+      const installed = await provisionNode24(config, (message) =>
+        log({ event: "runtime-provision", message }),
+      );
+      host.useNode(installed);
+      sendJson(response, 200, { ok: true, executable: installed });
+    } catch (error) {
+      sendError(
+        response,
+        502,
+        "provision_failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  });
+
+  // ---- Sessions -----------------------------------------------------------
+  route("POST", "/api/sessions", async (_request, response) => {
+    try {
+      const session = await host.createSession();
+      const tools = await session.client.request("tools/list", {});
+      sendJson(response, 201, {
+        sessionId: session.id,
+        tools: tools.tools.map((tool) => ({
+          name: tool.name,
+          title: tool.title ?? tool.name,
+          description: tool.description ?? "",
+          inputSchema: tool.inputSchema ?? { type: "object" },
+          outputSchema: tool.outputSchema ?? null,
+          annotations: tool.annotations ?? null,
+          cli: `rea ${cliCommandFor(tool.name)}`,
+          hostDependent: isHostDependent(tool.name),
+        })),
+      });
+    } catch (error) {
+      sendError(
+        response,
+        502,
+        "session_start_failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  });
+
+  route("DELETE", "/api/sessions", async (request, response, _body) => {
+    const id = request.headers["x-rea-session"];
+    if (typeof id === "string") await host.closeSession(id);
+    response.writeHead(204).end();
+  });
+
+  // ---- Tool calls ---------------------------------------------------------
+  route("POST", "/api/call", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const name = body?.tool;
+    const args = body?.arguments ?? {};
+    if (typeof name !== "string" || name.length === 0)
+      return sendError(response, 400, "tool_missing", "Name a tool to call.");
+    if (typeof args !== "object" || args === null || Array.isArray(args))
+      return sendError(
+        response,
+        400,
+        "arguments_invalid",
+        "Arguments must be an object.",
+      );
+
+    const startedAt = Date.now();
+    // Stream NDJSON progress so the browser can narrate a long analysis; the
+    // stream always ends with exactly one `result` record.
+    const acceptsStream = String(request.headers.accept ?? "").includes(
+      "application/x-ndjson",
+    );
+    const started = Date.now();
+    const emit = (record) => {
+      if (!acceptsStream) return;
+      if (!streaming) {
+        response.writeHead(200, {
+          "content-type": "application/x-ndjson; charset=utf-8",
+          "cache-control": "no-store",
+          "x-accel-buffering": "no",
+        });
+        streaming = true;
+      }
+      response.write(`${JSON.stringify(record)}\n`);
+    };
+    let streaming = false;
+    try {
+      session.touch();
+      const result = await session.callTool(name, args, {
+        onProgress: (progress) =>
+          emit({
+            type: "progress",
+            progress: {
+              phase: progress.message?.split(":")[0] ?? "analysis",
+              message: progress.message ?? "",
+              completed: progress.progress ?? 0,
+              total: progress.total ?? 0,
+            },
+          }),
+      });
+      const projected = {
+        tool: name,
+        durationMs: Date.now() - startedAt,
+        ...projectCall(result),
+      };
+      if (acceptsStream) {
+        emit({ type: "result", result: projected });
+        response.end();
+      } else {
+        sendJson(response, 200, projected);
+      }
+    } catch (error) {
+      const failure = {
+        tool: name,
+        durationMs: Date.now() - started,
+        status: "error",
+        payload: null,
+        error: {
+          code: /** @type {any} */ (error)?.code ?? "tool_call_failed",
+          category: "failure",
+          message: error instanceof Error ? error.message : String(error),
+          remediation: null,
+          retryable: /** @type {any} */ (error)?.statusCode !== 429,
+          details: null,
+        },
+      };
+      if (acceptsStream) {
+        emit({ type: "result", result: failure });
+        response.end();
+      } else {
+        sendJson(
+          response,
+          /** @type {any} */ (error)?.statusCode ?? 502,
+          failure,
+        );
+      }
+    }
+  });
+
+  // ---- Files --------------------------------------------------------------
+  /** Stream an upload to disk, then hash and stage it in the workspace. */
+  route("PUT", "/api/upload", async (request, response, _body, url) => {
+    const session = await sessionOf(request, response, undefined);
+    if (session === undefined) return;
+    const filename = url.searchParams.get("filename") ?? "artifact";
+    const safe = basename(filename);
+    const temporary = join(session.workspace, `${randomUUID()}.partial`);
+    await mkdir(session.workspace, { recursive: true });
+    const limit = config.uploadLimitBytes;
+    let received = 0;
+    const out = createWriteStream(temporary);
+    try {
+      for await (const chunk of request) {
+        received += chunk.length;
+        if (received > limit) {
+          out.destroy();
+          await import("node:fs/promises").then(({ rm }) =>
+            rm(temporary, { force: true }),
+          );
+          return sendError(
+            response,
+            413,
+            "upload_too_large",
+            `Uploads are limited to ${Math.round(limit / (1024 * 1024))} MiB.`,
+          );
+        }
+        if (!out.write(chunk))
+          await new Promise((resolve) =>
+            out.once("drain", () => resolve(undefined)),
+          );
+      }
+      await new Promise((resolve, reject) => {
+        out.end(
+          /** @param {Error | null | undefined} error */
+          (error) =>
+            error === undefined || error === null
+              ? resolve(undefined)
+              : reject(error),
+        );
+      });
+      // stageUpload copies the temporary file under its own name so REA sees
+      // the caller's filename while the workspace stays free of partials.
+      const staged = await stageUpload(session.workspace, safe, temporary);
+      const { rm } = await import("node:fs/promises");
+      await rm(temporary, { force: true });
+      sendJson(response, 201, staged);
+    } catch (error) {
+      out.destroy();
+      sendError(
+        response,
+        502,
+        "upload_failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  });
+
+  // ---- Local sources ------------------------------------------------------
+  route("GET", "/api/sources", async (_request, response) => {
+    const nodes = await describeTree(
+      config.repositoryRoot,
+      config.repositoryRoot,
+    ).catch(() => []);
+    sendJson(response, 200, {
+      root: config.repositoryRoot,
+      nodes: flattenTree(nodes),
+    });
+  });
+
+  /** Generate the built-in demo samples inside a session workspace. */
+  route("POST", "/api/samples", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const directory = join(session.workspace, "samples");
+    try {
+      const generated = await generateSamples(directory);
+      const files = await Promise.all(
+        generated.map(async ({ id, path }) => ({
+          id,
+          name: basename(path),
+          path,
+          bytes: (await stat(path)).size,
+          sha256: await sha256File(path),
+          extension: extname(path),
+        })),
+      );
+      sendJson(response, 201, { directory, files });
+    } catch (error) {
+      sendError(
+        response,
+        502,
+        "sample_generation_failed",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  });
+
+  /** Write a byte range into the session workspace (used by the hex viewer). */
+  route("POST", "/api/workspace/text", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const name = basename(String(body?.name ?? "input.txt"));
+    const text = String(body?.text ?? "");
+    const destination = join(session.workspace, name);
+    await writeFile(destination, text, "utf8");
+    sendJson(response, 201, {
+      path: destination,
+      bytes: Buffer.byteLength(text),
+      sha256: await sha256File(destination),
+    });
+  });
+
+  route("GET", "/api/workspace", async (request, response) => {
+    const session = await sessionOf(request, response, undefined);
+    if (session === undefined) return;
+    const entries = await readdir(session.workspace, {
+      withFileTypes: true,
+    }).catch(() => []);
+    const files = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const path = join(session.workspace, entry.name);
+      const stats = await stat(path);
+      files.push({
+        name: entry.name,
+        path,
+        bytes: stats.size,
+        modified: stats.mtimeMs,
+      });
+    }
+    sendJson(response, 200, { workspace: session.workspace, files });
+  });
+
+  /** Dispatch one request; returns false when no route matches. */
+  const handle = async (request, response, url) => {
+    const handler = routes.get(`${request.method} ${url.pathname}`);
+    if (handler === undefined) return false;
+    if (request.method === "POST" || request.method === "PUT") {
+      if (request.method === "PUT") {
+        await handler(request, response, undefined, url);
+        return true;
+      }
+      const body = await readJsonBody(request, 8 * 1024 * 1024);
+      if (!body.ok) {
+        sendError(response, body.status, "body_invalid", body.message);
+        return true;
+      }
+      await handler(request, response, body.value, url);
+      return true;
+    }
+    await handler(request, response, undefined, url);
+    return true;
+  };
+
+  return { handle };
+};
+
+/** Depth-first flatten of the source tree with a depth marker. */
+const flattenTree = (nodes, depth = 0, out = []) => {
+  for (const node of nodes) {
+    out.push({
+      kind: node.kind,
+      name: node.name,
+      path: node.path,
+      ...(node.absolute === undefined ? {} : { absolute: node.absolute }),
+      ...(node.bytes === undefined ? {} : { bytes: node.bytes }),
+      ...(node.inspectable === undefined
+        ? {}
+        : { inspectable: node.inspectable }),
+      depth,
+    });
+    if (node.children !== undefined) flattenTree(node.children, depth + 1, out);
+  }
+  return out;
+};
