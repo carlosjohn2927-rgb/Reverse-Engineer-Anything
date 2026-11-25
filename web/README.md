@@ -64,6 +64,7 @@ app/js/readiness.js     per-operation readiness projection (available/unavailabl
 app/js/host-integrations.js which host runtimes gate which tools, and how to configure them
 app/js/evidence-bundle.js what a bundle transfer can and cannot claim
 app/js/guidance.js      search REA's installed docs; a miss is not a verdict
+app/js/host-restrictions.js which features the host itself blocks, and which it does not
 app/js/views/*.js       one module per view
 app/js/render/          evidence projections (managed, go, sqlite, entropy, …)
 server/index.mjs        HTTP server, CORS, preview framing, shutdown
@@ -101,7 +102,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs eleven suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs twelve suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -158,8 +159,19 @@ The Workflows view now searches and reads it. The suite pins REA's own
 sentence — "This does not indicate whether an analysis capability is
 available" — through projection, summary and rendered view, so a miss can never
 read as "this can't be done". It also pins the locator rule: a token opens only
-the bundle that minted it, and a forged one is refused. The runner shuts the
-server down afterwards and fails if any REA child process outlived it.
+the bundle that minted it, and a forged one is refused. `host-restrictions`
+covers the one gate that is not configuration at all: REA's ten
+`HOST_RESTRICTED_FEATURES` gate 13 advertised tools, and on an unsupported
+platform no environment variable lets them pass. That is the opposite failure
+from a missing path — one needs a setting, the other needs a different machine —
+and both looked like the same grey row, because neither appears in
+`capabilities`. The rules are pure functions of `platform` and `arch`, so the
+suite evaluates them for macOS, Windows, Linux x64 and Linux arm64, and then
+checks them against REA itself: on this host every gated tool must answer with
+a configuration error and never `unsupported_host`. It also pins the sentence
+that keeps a supported feature from reading as working — host support is not
+availability. The runner shuts the server down afterwards and fails if any REA
+child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
 If it is missing the suites fail rather than passing quietly; set

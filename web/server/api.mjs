@@ -7,6 +7,10 @@ import { readJsonBody, sendError, sendJson } from "./http.mjs";
 import { generateSamples } from "./samples.mjs";
 import { describeTree, sha256File, stageUpload } from "./sources.mjs";
 import {
+  HOST_RESTRICTED_FEATURES,
+  featureSupportFor,
+} from "../app/js/host-restrictions.js";
+import {
   BUNDLE_DOWNLOAD_NAME,
   bundlePathIn,
   describeReceipt,
@@ -669,6 +673,25 @@ export const createApi = ({ config, host, log }) => {
       path: destination,
       bytes: Buffer.byteLength(text),
       sha256: await sha256File(destination),
+    });
+  });
+
+  // ---- Host-restricted features -----------------------------------------
+  //
+  // `HOST_RESTRICTED_FEATURES` gates 13 tools on the *host*: on an unsupported
+  // platform/arch no environment variable lets them pass. That appeared in
+  // neither `capabilities` nor `doctor`, so an unsupported host and an
+  // unconfigured one looked identical. These rules are pure functions of
+  // platform and arch, so they are evaluated here rather than guessed at.
+  route("GET", "/api/host-restrictions", async (_request, response) => {
+    const { platform, arch } = process;
+    const features = featureSupportFor(platform, arch);
+    sendJson(response, 200, {
+      host: { platform, arch },
+      // `supported` is a statement about this host only; it says nothing about
+      // whether the integration is configured or reachable.
+      features,
+      declared: HOST_RESTRICTED_FEATURES.length,
     });
   });
 

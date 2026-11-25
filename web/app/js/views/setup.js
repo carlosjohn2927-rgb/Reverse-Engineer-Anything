@@ -6,6 +6,11 @@ import {
   CONFIGURED_IS_NOT_VERIFIED,
   HOST_INTEGRATIONS,
 } from "../host-integrations.js";
+import {
+  HOST_SUPPORT_IS_NOT_AVAILABILITY,
+  hostRestrictionSummary,
+  restrictionsFromPayload,
+} from "../host-restrictions.js";
 import { sectionHeader, toast } from "../ui.js";
 import { set, state } from "../store.js";
 
@@ -466,6 +471,113 @@ export const renderSetup = (root) => {
     );
   };
 
+  // ---- Host-restricted features ----------------------------------------
+  // A different question from configuration: ten integrations are gated on
+  // the host itself, so on an unsupported platform no setting will ever make
+  // them pass. Both states looked identical (absent from `capabilities`), and
+  // they need opposite answers — one needs a path, the other needs a machine.
+  const restrictionPanel = h("section", { class: "panel" });
+  const renderRestrictions = () => {
+    const observed = state.hostRestrictions;
+    if (observed === null || observed === undefined) {
+      restrictionPanel.replaceChildren(
+        sectionHeader("Host-restricted integrations", "Checking this host…"),
+      );
+      return;
+    }
+    const host = observed.host ?? { platform: "unknown", arch: "unknown" };
+    const blocked = observed.features.filter((feature) => !feature.supported);
+    const allowed = observed.features.filter((feature) => feature.supported);
+    restrictionPanel.replaceChildren(
+      sectionHeader(
+        "Host-restricted integrations",
+        hostRestrictionSummary(observed.features, host),
+        h(
+          "button",
+          {
+            class: "ghost-button small",
+            type: "button",
+            onclick: () => void loadRestrictions(),
+          },
+          "Re-check",
+        ),
+      ),
+      h(
+        "div",
+        { class: "notice-row" },
+        h(
+          "div",
+          { class: "notice" },
+          h("strong", { text: "Host support is not availability" }),
+          h("p", {
+            class: "muted small",
+            text: HOST_SUPPORT_IS_NOT_AVAILABILITY,
+          }),
+        ),
+      ),
+      // Blocked features first: they are the ones that cannot be fixed here.
+      h(
+        "div",
+        { class: "check-list" },
+        ...[...blocked, ...allowed].map((feature) =>
+          h(
+            "div",
+            { class: "check-row" },
+            h("span", { class: `dot ${feature.supported ? "warn" : "bad"}` }),
+            h(
+              "div",
+              { class: "check-main" },
+              h(
+                "div",
+                { class: "row" },
+                h("strong", { text: feature.label }),
+                h("span", {
+                  class: "badge",
+                  text: `${feature.tools.length} tool${feature.tools.length === 1 ? "" : "s"}`,
+                }),
+                feature.supported
+                  ? h("span", { class: "badge warn", text: "host supported" })
+                  : h("span", {
+                      class: "badge bad",
+                      text: "host not supported",
+                    }),
+              ),
+              h("p", {
+                class: "muted",
+                text: feature.supported
+                  ? `Supported on ${feature.supportedWhen}. Still needs its own configuration.`
+                  : feature.reason,
+              }),
+              feature.supported
+                ? null
+                : h("p", { class: "faint small", text: feature.remediation }),
+              h("p", {
+                class: "faint mono small",
+                text: feature.tools.join(", "),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
+
+  const loadRestrictions = async () => {
+    try {
+      const payload = await api.hostRestrictions();
+      set({ hostRestrictions: restrictionsFromPayload(payload) });
+    } catch (error) {
+      set({
+        hostRestrictions: {
+          host: null,
+          features: [],
+          error: errorMessage(error),
+        },
+      });
+    }
+    renderRestrictions();
+  };
+
   const loadHostIntegrations = async () => {
     try {
       set({ hostIntegrations: await api.hostIntegrations() });
@@ -488,6 +600,7 @@ export const renderSetup = (root) => {
     providersPanel,
     capabilityPanel,
     hostPanel,
+    restrictionPanel,
   );
 
   root.replaceChildren(container);
@@ -495,9 +608,11 @@ export const renderSetup = (root) => {
   renderProviders();
   renderCapabilities();
   renderHost();
+  renderRestrictions();
   void loadDoctor().then(renderProviders);
   void loadCapabilities();
   void loadHostIntegrations();
+  void loadRestrictions();
   return { container };
 };
 

@@ -93,6 +93,7 @@ const listeners = new Set();
  *   guidanceSearch: { query: string, result: import("./guidance.js").GuidanceSearch } | null,
  *   guidanceSection: (import("./guidance.js").GuidanceSectionResult & { locator: string }) | null,
  *   guidanceQuery: string,
+ *   hostRestrictions: { host: { platform: string, arch: string } | null, features: import("./host-restrictions.js").FeatureSupport[], error?: string } | null,
  *   lastTree: any[],
  * }} State
  */
@@ -127,6 +128,8 @@ export const state = {
   guidanceSearch: null,
   /** @type {(import("./guidance.js").GuidanceSectionResult & { locator: string }) | null} */
   guidanceSection: null,
+  /** @type {{ host: { platform: string, arch: string } | null, features: import("./host-restrictions.js").FeatureSupport[], error?: string } | null} */
+  hostRestrictions: null,
   guidanceQuery: "",
   lastTree: [],
 };

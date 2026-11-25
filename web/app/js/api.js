@@ -147,6 +147,17 @@ export const api = {
   hostIntegrations: () => request("/api/host-integrations"),
 
   /**
+   * Per-feature host support: which integrations this platform/arch blocks.
+   *
+   * Distinct from `hostIntegrations()`, which reports configuration. An
+   * unsupported host cannot be fixed by configuring anything, and an
+   * unconfigured integration does not need a different machine.
+   *
+   * @returns {Promise<{ host: { platform: string, arch: string }, features: { id: string, label: string, supported: boolean, supportedWhen: string, reason: string, remediation: string, tools: string[] }[], declared: number }>}
+   */
+  hostRestrictions: () => request("/api/host-restrictions"),
+
+  /**
    * Export the session's canonical Evidence bundle.
    *
    * REA only exports by absolute local path, which a browser cannot name, so
