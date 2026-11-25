@@ -981,3 +981,23 @@ details.raw-details[open] > summary {
 .notice-note.warn {
   color: var(--warn, #fbbf24);
 }
+
+/* What a destructive tool can change. Consequence first, undo second: a user
+   who is about to remove a device package needs the outcome before the caveat. */
+.destructive-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  margin-top: 4px;
+  border-left: 2px solid var(--warn, #fbbf24);
+  background: rgba(251, 191, 36, 0.06);
+  border-radius: 0 6px 6px 0;
+}
+.destructive-note.warn {
+  border-left-color: var(--bad, #f87171);
+  background: rgba(248, 113, 113, 0.08);
+}
+.destructive-note p {
+  margin: 0;
+}

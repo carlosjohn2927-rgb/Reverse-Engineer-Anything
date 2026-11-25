@@ -3,6 +3,11 @@ import { FAMILIES, familyOf, pathKeyOf } from "../catalog.js";
 import { set, state } from "../store.js";
 import { launchTool } from "../runner.js";
 import {
+  destructiveProfile,
+  destructiveSummary,
+  DESTRUCTIVE_SURFACES,
+} from "../destructive.js";
+import {
   readinessFor,
   readinessSummary,
   readinessTally,
@@ -146,10 +151,12 @@ export const renderTools = (root) => {
 
   // `append(null)` would render the string "null"; spread a conditional list.
   const note = readinessNote(state.tools);
+  const destructive = destructiveNote(state.tools);
 
   container.append(
     h("section", { class: "toolbar-panel" }, searchInput, chips),
     ...(note === null ? [] : [note]),
+    ...(destructive === null ? [] : [destructive]),
     ...(sections.length === 0
       ? [
           h(
@@ -212,14 +219,24 @@ const annotationBadges = (tool) => {
   const badges = [];
   if (annotations.readOnlyHint === true)
     badges.push(h("span", { class: "badge ok", text: "read-only" }));
-  if (annotations.destructiveHint === true)
+  if (annotations.destructiveHint === true) {
+    // "edits state" was the same lie as the drawer badge: it is what the
+    // analysis-state tools do, and it is not what removing a device package
+    // does. Name the most consequential surface instead.
+    const profile = destructiveProfile(tool);
+    const worst = profile?.surfaces[0] ?? null;
+    const surface = DESTRUCTIVE_SURFACES.find((entry) => entry.id === worst);
     badges.push(
       h("span", {
         class: "badge warn",
-        title: "Edits analysis state; original bytes are not modified.",
-        text: "edits state",
+        title: profile?.because ?? "REA marks this tool destructive.",
+        text:
+          worst === null || surface === undefined
+            ? "destructive"
+            : surfaceShortLabel(worst),
       }),
     );
+  }
   if (annotations.openWorldHint === true)
     badges.push(
       h("span", {
@@ -239,3 +256,48 @@ const defaultArgs = (tool) => {
 };
 
 export { set };
+
+/** Short badge text for a surface, used on the dense card grid. */
+const surfaceShortLabel = (surface) =>
+  surface === "analysis-state"
+    ? "edits state"
+    : surface === "device"
+      ? "device"
+      : surface === "filesystem"
+        ? "writes file"
+        : surface === "process"
+          ? "runs process"
+          : "ends session";
+
+/**
+ * The split across destructive tools, stated once.
+ *
+ * A reader who sees "32 destructive" needs to know they are not equivalent:
+ * seven edit analysis state and cannot touch bytes, six change a connected
+ * device. Without this line the card badges read as one uniform warning and
+ * get ignored, which is how a blanket label stops working.
+ *
+ * @param {import("../store.js").Tool[]} tools
+ */
+const destructiveNote = (tools) => {
+  const destructive = tools.filter(
+    (tool) => tool.annotations?.destructiveHint === true,
+  );
+  if (destructive.length === 0) return null;
+  const unclassified = destructive.filter(
+    (tool) => destructiveProfile(tool)?.unclassified === true,
+  ).length;
+  return h(
+    "div",
+    { class: "notice-row", id: "tools-destructive-note" },
+    h(
+      "div",
+      { class: "notice" },
+      h("strong", { text: "Destructive tools" }),
+      h("p", {
+        class: "muted small",
+        text: destructiveSummary(destructive.length, unclassified),
+      }),
+    ),
+  );
+};

@@ -65,6 +65,7 @@ app/js/host-integrations.js which host runtimes gate which tools, and how to con
 app/js/evidence-bundle.js what a bundle transfer can and cannot claim
 app/js/guidance.js      search REA's installed docs; a miss is not a verdict
 app/js/host-restrictions.js which features the host itself blocks, and which it does not
+app/js/destructive.js   what each destructive tool actually changes, and what undoes it
 app/js/views/*.js       one module per view
 app/js/render/          evidence projections (managed, go, sqlite, entropy, …)
 server/index.mjs        HTTP server, CORS, preview framing, shutdown
@@ -102,7 +103,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs twelve suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs thirteen suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -170,8 +171,17 @@ suite evaluates them for macOS, Windows, Linux x64 and Linux arm64, and then
 checks them against REA itself: on this host every gated tool must answer with
 a configuration error and never `unsupported_host`. It also pins the sentence
 that keeps a supported feature from reading as working — host support is not
-availability. The runner shuts the server down afterwards and fails if any REA
-child process outlived it.
+availability. `destructive-tools` covers a label that was simply false for most
+of the tools it described: all 32 tools with `destructiveHint` were told
+"Original artifact bytes are not modified" and badged "edits state". REA
+documents `uninstall_adb_package` as package removal "without data retention"
+and `export_evidence_bundle` as writing to a local path. MCP carries no effect
+list — the tool listing has only the four boolean hints — so the classification
+rests on REA's own descriptions, quotes them, and reports anything it cannot
+place as unclassified rather than harmless. The suite pins the device tools as
+device changes, asserts only a minority may claim bytes are untouched, and
+fails if any advertised destructive tool lacks a reading. The runner shuts the
+server down afterwards and fails if any REA child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
 If it is missing the suites fail rather than passing quietly; set

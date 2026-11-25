@@ -3,6 +3,7 @@ import { api } from "./api.js";
 /** @typedef {import("./api.js").CallResult} CallResult */
 import { byId, errorMessage, h, humanize } from "./dom.js";
 import { renderResult } from "./render/evidence.js";
+import { destructiveProfile } from "./destructive.js";
 import { readinessFor, readinessSummary } from "./readiness.js";
 import { recordActivity, recordEvidence } from "./store.js";
 import { toast } from "./ui.js";
@@ -24,6 +25,42 @@ const openDrawer = () => {
 };
 
 /** Arguments that identify the subject of a call and must stay visible. */
+/**
+ * Render what a destructive tool can change, naming the surface and its undo.
+ *
+ * A non-destructive tool renders nothing. A destructive tool with no reading
+ * here says so instead of falling back to a soothing sentence.
+ *
+ * @param {{ name: string, annotations?: { destructiveHint?: boolean } | null }} tool
+ * @returns {HTMLElement[]}
+ */
+const destructiveWarning = (tool) => {
+  const profile = destructiveProfile(tool);
+  if (profile === null) return [];
+  const heading = h("p", {
+    class: "badge warn",
+    title: "MCP annotation: destructiveHint",
+    text: profile.headline,
+  });
+  if (profile.unclassified)
+    return [
+      heading,
+      h("p", { class: "destructive-note warn", text: profile.because }),
+    ];
+  return [
+    heading,
+    ...profile.details.map((detail) =>
+      h(
+        "div",
+        { class: "destructive-note" },
+        h("p", { class: "small", text: detail.consequence }),
+        h("p", { class: "faint small", text: detail.undo }),
+      ),
+    ),
+    h("p", { class: "faint small", text: profile.because }),
+  ];
+};
+
 const PRIMARY_INPUT_KEYS = new Set(["path", "input_path", "inputPath"]);
 
 /** A path-like argument: `path`, `input_path`, `parent_unit_path`, ... */
@@ -281,13 +318,10 @@ export const launchTool = async (
           text: "Needs a device, browser or provider on the host",
         })
       : null,
-    tool.annotations?.destructiveHint === true
-      ? h("p", {
-          class: "badge warn",
-          title: "MCP annotation: destructiveHint",
-          text: "Edits analysis state. Original artifact bytes are not modified.",
-        })
-      : null,
+    // What a destructive tool changes, not a blanket reassurance. The old badge
+    // told all 32 that artifact bytes were safe, including the one documented
+    // as removing a device package "without data retention".
+    ...destructiveWarning(tool),
     tool.annotations?.openWorldHint === true
       ? h("p", {
           class: "badge",
