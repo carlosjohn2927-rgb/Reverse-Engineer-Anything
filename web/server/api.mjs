@@ -239,6 +239,11 @@ export const createApi = ({ config, host, log }) => {
             required: argument.required === true,
           })),
         })),
+        // REA's operating instructions are only sent once, during
+        // `initialize`. Expose them so the workspace can show what REA says
+        // about its own scope and limits instead of hiding it in a handshake.
+        instructions: session.instructions,
+        serverInfo: session.serverInfo,
       });
     } catch (error) {
       sendError(
@@ -300,6 +305,42 @@ export const createApi = ({ config, host, log }) => {
         "prompt_failed",
         error instanceof Error ? error.message : String(error),
       );
+    }
+  });
+
+  // ---- Prompt argument completions ----------------------------------------
+  // REA advertises `completions` and fills 14 of its 25 guided-workflow
+  // arguments from the live session. Without this route the browser had to
+  // guess document names, Evidence ids and provider names by hand.
+  route("POST", "/api/complete", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const prompt = body?.prompt;
+    const argument = body?.argument;
+    if (typeof prompt !== "string" || prompt.length === 0)
+      return sendError(response, 400, "prompt_missing", "Name a prompt.");
+    if (typeof argument !== "string" || argument.length === 0)
+      return sendError(response, 400, "argument_missing", "Name an argument.");
+    try {
+      const values = await session.completePromptArgument(
+        prompt,
+        argument,
+        typeof body?.value === "string" ? body.value : "",
+      );
+      sendJson(response, 200, {
+        prompt,
+        argument,
+        values: values.map(String),
+      });
+    } catch (error) {
+      // A completion failure must not stop the user from typing a value, so
+      // report an empty list alongside the reason rather than a hard error.
+      sendJson(response, 200, {
+        prompt,
+        argument,
+        values: [],
+        unavailable: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 

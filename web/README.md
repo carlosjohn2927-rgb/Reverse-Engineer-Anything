@@ -59,10 +59,11 @@ app/js/store.js         the single observable state object
 app/js/api.js           browser client for the HTTP API
 app/js/runner.js        schema-driven tool form, streamed progress, results
 app/js/families.js      tool -> family map, checked complete by the tests
+app/js/completions.js   prompt argument -> completion kind, pinned to REA's contract
 app/js/views/*.js       one module per view
 app/js/render/          evidence projections (managed, go, sqlite, entropy, …)
 server/index.mjs        HTTP server, CORS, preview framing, shutdown
-server/api.mjs          routes: status, doctor, sessions, calls, prompts, uploads
+server/api.mjs          routes: status, doctor, sessions, calls, prompts, completions, uploads
 server/rea-host.mjs     one REA MCP child process per browser session
 server/mcp.mjs          raw JSON-RPC client for REA's streamable HTTP MCP mode
 server/samples.mjs      the built-in sample artifacts, generated locally
@@ -94,7 +95,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs five suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs six suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -110,8 +111,11 @@ and Escape — asserting that a closed overlay is both `hidden` and
 prompts, and nothing may go missing. It checks that every advertised tool is in
 exactly one family, that no family claims a tool REA no longer serves, that the
 Tools view renders all 233 cards, and that every prompt appears in the
-Workflows view with an input per argument. The runner shuts the server down
-afterwards and fails if any REA child process outlived it.
+Workflows view with an input per argument. `prompt-completions` pins the
+hand-written completion map to what the live server accepts: all 14 arguments
+REA completes must be mapped, to the right kind, and the server must answer
+every one. The runner shuts the server down afterwards and fails if any REA
+child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
 If it is missing the suites fail rather than passing quietly; set

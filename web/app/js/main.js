@@ -80,6 +80,7 @@ const boot = async () => {
       tools: session.tools,
       toolsByName: new Map(session.tools.map((tool) => [tool.name, tool])),
       prompts: session.prompts ?? [],
+      instructions: session.instructions ?? "",
       sessionReady: true,
       sessionError: null,
     });

@@ -86,6 +86,8 @@ export const api = {
      *   sessionId: string,
      *   tools: import("./store.js").Tool[],
      *   prompts: import("./store.js").Prompt[],
+     *   instructions: string,
+     *   serverInfo: { name?: string, version?: string } | null,
      * }}
      */
     const payload = await request("/api/sessions", { method: "POST" });
@@ -122,6 +124,20 @@ export const api = {
     request("/api/prompt", {
       method: "POST",
       body: JSON.stringify({ prompt, arguments: args ?? {} }),
+    }),
+
+  /**
+   * Session-owned completion values for one prompt argument.
+   *
+   * @param {string} prompt
+   * @param {string} argument
+   * @param {string} [value] partial text the user has typed
+   * @returns {Promise<{ prompt: string, argument: string, values: string[], unavailable?: string }>}
+   */
+  completePromptArgument: (prompt, argument, value = "") =>
+    request("/api/complete", {
+      method: "POST",
+      body: JSON.stringify({ prompt, argument, value }),
     }),
 
   samples: () =>

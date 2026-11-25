@@ -49,6 +49,11 @@ const parseEventStream = (text) => {
  * agent session and provider resources are single-owner.
  */
 export class McpSession {
+  /** Instructions REA returned from `initialize`, verbatim. */
+  instructions = "";
+  /** Server identity from `initialize`, e.g. `{ name: "rea", version: … }`. */
+  serverInfo = null;
+
   #baseUrl;
   #sessionId;
   #nextId = 1;
@@ -97,13 +102,28 @@ export class McpSession {
         "MCP server did not return a session id.",
         "initialize_failed",
       );
-    const payload = await response.json().catch(() => undefined);
+    // REA answers `initialize` with `text/event-stream`, not JSON. Calling
+    // `response.json()` here silently produced `undefined` through the catch
+    // below, which is why `instructions` were empty for so long: the handshake
+    // data was being thrown away on the happy path.
+    const initializeType = response.headers.get("content-type") ?? "";
+    const payload = initializeType.includes("text/event-stream")
+      ? parseEventStream(await response.text())[0]
+      : await response.json().catch(() => undefined);
     if (payload?.error !== undefined)
       throw new RpcError(
         payload.error.message ?? "MCP initialize failed.",
         "initialize_failed",
       );
     const session = new McpSession({ baseUrl: url, sessionId, timeoutMs });
+    // REA sends its operating instructions in `initialize`. There is no
+    // resource for them (`resources/list` is not implemented), so this is the
+    // only chance to keep them.
+    session.instructions =
+      typeof payload?.result?.instructions === "string"
+        ? payload.result.instructions
+        : "";
+    session.serverInfo = payload?.result?.serverInfo ?? null;
     await session.#post(
       { jsonrpc: "2.0", method: "notifications/initialized" },
       undefined,

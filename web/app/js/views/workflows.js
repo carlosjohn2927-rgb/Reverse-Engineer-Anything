@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { completionKindFor } from "../completions.js";
 import { errorMessage, h, humanize } from "../dom.js";
 import { state } from "../store.js";
 import { copyButton, sectionHeader, toast } from "../ui.js";
@@ -36,6 +37,7 @@ export const renderWorkflows = (root) => {
   const cards = h("div", { class: "workflow-grid" });
   for (const prompt of prompts) cards.append(workflowCard(prompt));
 
+  const instructions = state.instructions ?? "";
   container.append(
     h(
       "section",
@@ -45,10 +47,82 @@ export const renderWorkflows = (root) => {
         `${prompts.length} guided workflows advertised by REA`,
       ),
     ),
+    ...(instructions.length === 0
+      ? []
+      : [
+          h(
+            "section",
+            { class: "panel" },
+            sectionHeader(
+              "How REA describes itself",
+              "Sent once in the MCP handshake; there is no resource for it",
+              copyButton("Copy", () => instructions),
+            ),
+            h(
+              "div",
+              { class: "panel-body" },
+              h("pre", {
+                class: "code-block workflow-text",
+                text: instructions,
+              }),
+            ),
+          ),
+        ]),
     cards,
   );
   root.replaceChildren(container);
   return { container };
+};
+
+/**
+ * Fill a `datalist` from REA's completion endpoint and refresh it as the user
+ * types. Values depend on the live session (open documents, recorded Evidence),
+ * so the list is requested on focus and on input rather than built once.
+ *
+ * @param {string} promptName
+ * @param {string} argumentName
+ * @param {HTMLInputElement} input
+ * @param {HTMLDataListElement} options
+ * @param {() => void} onChange
+ */
+const loadCompletions = (
+  promptName,
+  argumentName,
+  input,
+  options,
+  onChange,
+) => {
+  /** @type {AbortController | null} */
+  let inFlight = null;
+  /** @type {string | null} */
+  let lastQuery = null;
+  const refresh = async () => {
+    const query = input.value;
+    if (query === lastQuery) return;
+    lastQuery = query;
+    if (inFlight !== null) inFlight.abort();
+    const controller = new AbortController();
+    inFlight = controller;
+    try {
+      const result = await api.completePromptArgument(
+        promptName,
+        argumentName,
+        query,
+      );
+      if (controller.signal.aborted) return;
+      options.replaceChildren(
+        ...result.values.map((value) => h("option", { value })),
+      );
+      onChange();
+    } catch {
+      // Completion is an assist; a failure leaves the user with free text.
+      if (!controller.signal.aborted) onChange();
+    } finally {
+      if (inFlight === controller) inFlight = null;
+    }
+  };
+  input.addEventListener("focus", refresh);
+  input.addEventListener("input", refresh);
 };
 
 /** One workflow: its arguments, its instructions, and a copy action. */
@@ -62,14 +136,43 @@ const workflowCard = (prompt) => {
     { class: "workflow-args" },
     ...args.map((argument) => {
       const id = `workflow-${prompt.name}-${argument.name}`;
-      const input = h("input", {
-        id,
-        name: argument.name,
-        type: "text",
-        placeholder: argument.required ? "required" : "optional",
-        spellcheck: "false",
-      });
+      const kind = completionKindFor(prompt.name, argument.name);
+      const listId = `${id}-values`;
+      const input = /** @type {HTMLInputElement} */ (
+        h("input", {
+          id,
+          name: argument.name,
+          type: "text",
+          placeholder: argument.required ? "required" : "optional",
+          spellcheck: "false",
+          ...(kind === null ? {} : { list: listId, autocomplete: "off" }),
+        })
+      );
       fields.set(argument.name, input);
+      // A completion-kind argument takes a session-owned identifier, so offer
+      // the values REA knows about alongside the free-text input.
+      const options = /** @type {HTMLDataListElement} */ (
+        h("datalist", { id: listId })
+      );
+      const hint = h("p", { class: "field-hint" });
+      const describe = () => {
+        const base = argument.description ?? "";
+        if (kind === null) {
+          hint.textContent = base;
+          hint.hidden = base.length === 0;
+          return;
+        }
+        const count = kind === null ? 0 : options.children.length;
+        const state =
+          count === 0
+            ? `no ${kind} values in this session yet — type one`
+            : `${count} ${kind} value${count === 1 ? "" : "s"} available`;
+        hint.textContent = base.length === 0 ? state : `${base} · ${state}`;
+        hint.hidden = false;
+      };
+      describe();
+      if (kind !== null)
+        loadCompletions(prompt.name, argument.name, input, options, describe);
       return h(
         "div",
         { class: `form-field ${argument.required ? "required" : ""}` },
@@ -80,11 +183,13 @@ const workflowCard = (prompt) => {
           argument.required
             ? h("span", { class: "required-dot", title: "Required" })
             : null,
+          kind === null
+            ? null
+            : h("span", { class: "badge", text: kind, title: "Session value" }),
         ),
         input,
-        argument.description === undefined || argument.description === ""
-          ? null
-          : h("p", { class: "field-hint", text: argument.description }),
+        kind === null ? null : options,
+        hint,
       );
     }),
   );

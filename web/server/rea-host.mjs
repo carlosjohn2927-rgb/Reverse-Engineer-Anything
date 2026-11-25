@@ -42,6 +42,16 @@ export class ReaSession {
     return this.#client;
   }
 
+  /** REA's own operating instructions, as returned by `initialize`. */
+  get instructions() {
+    return this.#client.instructions ?? "";
+  }
+
+  /** Server identity from `initialize`, e.g. `{ name: "rea", version: "6.8.0" }`. */
+  get serverInfo() {
+    return this.#client.serverInfo ?? null;
+  }
+
   get workspace() {
     return this.#workspace;
   }
@@ -117,6 +127,28 @@ export class ReaSession {
     } finally {
       this.#calls.delete(controller);
     }
+  }
+
+  /**
+   * Ask REA for completion values for one prompt argument.
+   *
+   * REA answers from the live session, so `document`, `procedure` and the
+   * Evidence families are empty until a target has been analysed. An empty
+   * list is a valid answer, not a failure.
+   *
+   * @param {string} promptName
+   * @param {string} argumentName
+   * @param {string} value partial text the user has typed
+   */
+  async completePromptArgument(promptName, argumentName, value = "") {
+    if (this.#state !== "ready")
+      throw new Error("The analysis session is not ready.");
+    this.#lastUsedAt = Date.now();
+    const result = await this.#client.request("completion/complete", {
+      ref: { type: "ref/prompt", name: promptName },
+      argument: { name: argumentName, value },
+    });
+    return result?.completion?.values ?? [];
   }
 
   /** Stop the child process and remove the session workspace. */

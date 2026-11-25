@@ -240,6 +240,15 @@ check(
   `${promptCount} prompts`,
 );
 
+// The handshake instructions are the only place REA states its own scope and
+// warns about prompt injection in target content. `initialize` answers with
+// SSE, and a `response.json()` there used to swallow the whole payload.
+check(
+  "the session keeps REA's handshake instructions",
+  typeof state.instructions === "string" && state.instructions.length > 500,
+  `${state.instructions?.length ?? 0} chars`,
+);
+
 if (advertised !== null) {
   check(
     "the live tool count matches the catalog",
@@ -265,6 +274,16 @@ if (workflowsButton !== null && promptCount > 0) {
     "every advertised prompt gets a card",
     painted && cards === promptCount,
     `${cards} cards for ${promptCount} prompts`,
+  );
+  const instructionsPanel = [
+    ...window.document.querySelectorAll(".workflow-text"),
+  ].some((node) =>
+    (node.textContent ?? "").includes("reverse-engineering tools"),
+  );
+  check(
+    "the Workflows view shows REA's instructions",
+    instructionsPanel,
+    instructionsPanel ? "" : "no instructions panel rendered",
   );
   const fields = window.document.querySelectorAll(
     ".workflow-card .workflow-args input",
