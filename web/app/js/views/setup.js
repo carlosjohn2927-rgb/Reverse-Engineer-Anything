@@ -98,6 +98,16 @@ export const renderSetup = (root) => {
     );
   };
 
+  const loadCapabilities = async () => {
+    try {
+      const capabilities = await api.capabilities();
+      set({ capabilities });
+    } catch (error) {
+      set({ capabilities: { unavailable_reason: errorMessage(error) } });
+    }
+    renderCapabilities();
+  };
+
   const loadDoctor = async () => {
     doctorPanel.replaceChildren(
       sectionHeader("Readiness", "Running rea doctor…"),
@@ -212,12 +222,177 @@ export const renderSetup = (root) => {
     );
   };
 
+  // ---- Operation readiness ------------------------------------------------
+  // `doctor` says which engines are installed. `capabilities` says which
+  // *operations* are available right now, per provider, and why the rest are
+  // not — including the host-dependent tools (adb, frida, gdb, rizin, jeb,
+  // cutter) that doctor never inspects. A tool failing with
+  // `capability_unavailable` should be explainable here before it is tried.
+  const capabilityPanel = h("section", { class: "panel" });
+  const renderCapabilities = () => {
+    const payload = state.capabilities;
+    if (payload === null || payload === undefined) {
+      capabilityPanel.replaceChildren(
+        sectionHeader("Operation readiness", "Loading rea capabilities…"),
+      );
+      return;
+    }
+    if (payload.unavailable_reason !== undefined) {
+      capabilityPanel.replaceChildren(
+        headerWithRetry(
+          "Operation readiness",
+          "rea capabilities could not be read",
+          () => void loadCapabilities(),
+        ),
+        h(
+          "div",
+          { class: "panel-body" },
+          h("pre", {
+            class: "code-block workflow-text",
+            text: payload.unavailable_reason,
+          }),
+        ),
+      );
+      return;
+    }
+    // Flatten to one row per (provider, group) so a partially available
+    // provider is visible instead of collapsed to a single verdict.
+    const rows = (payload.capabilities ?? []).flatMap((entry) =>
+      (entry.groups ?? []).map((group) => ({
+        provider: entry.provider,
+        group,
+      })),
+    );
+    if (rows.length === 0) {
+      capabilityPanel.replaceChildren(
+        h(
+          "div",
+          { class: "empty-state" },
+          h("h3", { text: "No operation readiness reported" }),
+          h("p", {
+            text: "REA returned no capability groups. Open a target to populate analysis providers.",
+          }),
+        ),
+      );
+      return;
+    }
+    const available = rows.filter((row) => row.group.available === true).length;
+    const candidates = payload.analysis_provider_candidates ?? [];
+    capabilityPanel.replaceChildren(
+      headerWithRetry(
+        "Operation readiness",
+        `${available} of ${rows.length} operation groups available`,
+        () => void loadCapabilities(),
+      ),
+      h(
+        "div",
+        { class: "check-list" },
+        ...rows.map((row) =>
+          h(
+            "div",
+            { class: "check-row" },
+            h("span", {
+              class: `dot ${row.group.available ? "ok" : "warn"}`,
+            }),
+            h(
+              "div",
+              { class: "check-main" },
+              h(
+                "div",
+                { class: "row" },
+                h("strong", { text: row.provider.name ?? row.provider.id }),
+                row.group.availability_code === null ||
+                  row.group.availability_code === undefined
+                  ? null
+                  : h("span", {
+                      class: "badge",
+                      text: row.group.availability_code,
+                    }),
+                h("span", {
+                  class: "faint small mono",
+                  text: `${row.group.operations.length} op${row.group.operations.length === 1 ? "" : "s"}`,
+                }),
+              ),
+              h("span", {
+                class: "faint mono small",
+                text: row.group.operations.join(", "),
+              }),
+              row.group.available
+                ? null
+                : h("p", {
+                    class: "muted",
+                    text: row.group.reason ?? "Unavailable in this session.",
+                  }),
+              ...((row.group.limitations ?? []).slice(0, 1) ?? []).map(
+                (limit) => h("p", { class: "muted small", text: limit }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (candidates.length > 0) {
+      capabilityPanel.append(
+        sectionHeader(
+          "Analysis engines",
+          "What the decompiler-backed tools depend on",
+        ),
+        h(
+          "div",
+          { class: "check-list" },
+          ...candidates.map((candidate) =>
+            h(
+              "div",
+              { class: "check-row" },
+              h("span", {
+                class: `dot ${candidate.availability?.status === "available" ? "ok" : "warn"}`,
+              }),
+              h(
+                "div",
+                { class: "check-main" },
+                h("strong", {
+                  text: candidate.provider?.name ?? candidate.provider?.id,
+                }),
+                h("span", {
+                  class: "faint mono small",
+                  text: candidate.availability?.status ?? "unknown",
+                }),
+                candidate.availability?.reason
+                  ? h("p", {
+                      class: "muted",
+                      text: candidate.availability.reason,
+                    })
+                  : null,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+  };
+
+  container.append(runtimePanel, doctorPanel, providersPanel, capabilityPanel);
+
   root.replaceChildren(container);
   renderRuntime();
   renderProviders();
+  renderCapabilities();
   void loadDoctor().then(renderProviders);
+  void loadCapabilities();
   return { container };
 };
+
+/** Section header with a re-run action for the capability panel. */
+const headerWithRetry = (title, subtitle, onRetry) =>
+  sectionHeader(
+    title,
+    subtitle,
+    h(
+      "button",
+      { class: "ghost-button small", type: "button", onclick: onRetry },
+      "Re-check",
+    ),
+  );
 
 const statTile = (label, value, hint) =>
   h(

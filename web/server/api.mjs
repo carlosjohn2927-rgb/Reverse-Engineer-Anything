@@ -503,6 +503,56 @@ export const createApi = ({ config, host, log }) => {
     });
   });
 
+  /**
+   * Per-operation capability readiness.
+   *
+   * `rea doctor` answers "is this engine installed". It does not answer the
+   * question a user actually has when a tool fails: "is *this* operation
+   * available, and if not, why". `rea capabilities` does — it reports every
+   * provider, the operations it serves, whether each group is available, the
+   * machine-readable availability code and the remediation. This is the only
+   * surface that covers the 51 host-dependent tools (adb, frida, gdb, rizin,
+   * jeb, cutter), which doctor omits entirely.
+   *
+   * Some providers need a live target before they can answer, so this is a
+   * POST: it may run within a session's context.
+   */
+  route("POST", "/api/capabilities", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const { spawn } = await import("node:child_process");
+    const node = await host.ready();
+    const child = spawn(
+      node,
+      [config.reaEntry, "capabilities", "--format", "json"],
+      {
+        cwd: config.repositoryRoot,
+        env: { ...process.env, ...(body?.env ?? {}) },
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    await new Promise((resolve) => child.on("exit", resolve));
+    try {
+      sendJson(response, 200, JSON.parse(stdout));
+    } catch {
+      // A capabilities read must never break the Setup view; report the
+      // failure as data so the UI can show it next to the providers.
+      sendJson(response, 200, {
+        open: false,
+        capabilities: [],
+        analysis_provider_candidates: [],
+        unavailable_reason: `${stdout}\n${stderr}`.trim().slice(0, 4_000),
+      });
+    }
+  });
+
   /** Generate the built-in demo samples inside a session workspace. */
   route("POST", "/api/samples", async (request, response, body) => {
     const session = await sessionOf(request, response, body);

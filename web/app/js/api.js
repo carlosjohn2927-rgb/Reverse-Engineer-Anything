@@ -140,6 +140,25 @@ export const api = {
       body: JSON.stringify({ prompt, argument, value }),
     }),
 
+  /**
+   * Per-operation capability readiness from `rea capabilities`.
+   *
+   * @returns {Promise<{
+   *   capabilities: { provider: { id: string, name?: string, version?: string | null },
+   *     shared_limitations?: string[],
+   *     groups: { operations: string[], effects?: string[], limitations?: string[],
+   *       available: boolean, reason?: string | null, availability_code?: string | null }[] }[],
+   *   analysis_provider_candidates: { provider: { id: string, name?: string },
+   *     availability: { status: string, code?: string | null, reason?: string | null } }[],
+   *   unavailable_reason?: string,
+   * }>}
+   */
+  capabilities: () =>
+    request("/api/capabilities", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
   samples: () =>
     request("/api/samples", { method: "POST", body: JSON.stringify({}) }),
 
