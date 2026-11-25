@@ -17,6 +17,11 @@
     "types": ["node"],
     "noImplicitAny": false
   },
-  "include": ["app/**/*.js", "server/**/*.mjs"],
+  "include": [
+    "app/**/*.js",
+    "server/**/*.mjs",
+    "scripts/**/*.mjs",
+    "test/**/*.mjs"
+  ],
   "exclude": ["server/test"]
 }

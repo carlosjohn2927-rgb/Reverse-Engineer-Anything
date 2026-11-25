@@ -356,6 +356,10 @@ a:hover {
   border-color: var(--line-strong);
   background: var(--bg-panel-2);
 }
+.primary-button.small {
+  padding: 6px 11px;
+  font-size: 12px;
+}
 .ghost-button.small {
   padding: 5px 10px;
   font-size: 12px;

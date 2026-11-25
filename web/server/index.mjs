@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +11,7 @@ import { createStaticHandler } from "./static.mjs";
 
 const WEB_ROOT = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(WEB_ROOT, "..", "app");
+const DIST_ROOT = join(WEB_ROOT, "..", "dist");
 
 const log = (entry) =>
   process.stderr.write(
@@ -19,7 +21,12 @@ const log = (entry) =>
 const config = loadConfig(process.env);
 const host = new ReaHost({ config, log });
 const api = createApi({ config, host, log });
-const serveStatic = createStaticHandler({ root: APP_ROOT, config });
+// A build in `web/dist` wins; the source tree keeps `npm run dev` working.
+const serveStatic = createStaticHandler({
+  root: DIST_ROOT,
+  fallbackRoot: APP_ROOT,
+  config,
+});
 
 /** CORS for the preview proxy: reflect the caller's origin when allowed. */
 const applyCors = (request, response) => {
@@ -120,6 +127,7 @@ server.listen(config.port, config.host, () => {
     port: config.port,
     reaBuilt: reaRuntimeBuilt(config),
     runtime,
+    servedFrom: existsSync(join(DIST_ROOT, "index.html")) ? "dist" : "app",
   });
   process.stdout.write(
     `\n  REA web workspace\n  http://localhost:${config.port}/\n\n`,

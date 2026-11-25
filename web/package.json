@@ -9,12 +9,21 @@
     "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:dev": "node scripts/build.mjs --dev",
     "start": "node server/index.mjs",
     "dev": "node --watch-path=server server/index.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "oxlint --config ../.oxlintrc.json app server",
-    "format": "oxfmt app server",
-    "format:check": "oxfmt --check app server",
+    "lint": "oxlint --config ../.oxlintrc.json app server scripts test",
+    "format": "oxfmt app server scripts test",
+    "format:check": "oxfmt --check app server scripts test",
     "test": "node test/run.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
+    "jsdom": "^31.0.1",
+    "lightningcss": "1.33.0",
+    "typescript": "7.0.2"
   }
 }

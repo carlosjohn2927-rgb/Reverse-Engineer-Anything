@@ -19,8 +19,17 @@ try {
   const require = createRequire(import.meta.url);
   ({ JSDOM } = require("jsdom"));
 } catch {
-  console.log("dom-smoke: jsdom is not installed; skipping.");
-  process.exit(0);
+  if (process.env.REA_WEB_ALLOW_SKIP === "1") {
+    console.log(
+      "dom-smoke: jsdom is not installed; skipping (REA_WEB_ALLOW_SKIP=1).",
+    );
+    process.exit(0);
+  }
+  console.error(
+    "dom-smoke: jsdom is required for this check. Install it with `npm i -D jsdom` " +
+      "or set REA_WEB_ALLOW_SKIP=1 to skip.",
+  );
+  process.exit(1);
 }
 
 const html = readFileSync(
@@ -128,7 +137,9 @@ const check = (label, ok, detail = "") => {
 try {
   await import(moduleUrl("main.js"));
 } catch (error) {
-  console.error(`dom-smoke: the app failed to boot: ${error.stack ?? error}`);
+  const detail =
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
+  console.error(`dom-smoke: the app failed to boot: ${detail}`);
   process.exit(1);
 }
 const rail = window.document.getElementById("rail-status-text");

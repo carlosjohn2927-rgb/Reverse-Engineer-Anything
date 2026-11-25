@@ -1,8 +1,9 @@
 /**
- * Test entry point: starts the web server on a free port, runs every
- * `*.mjs` test against it, then shuts the server down.
+ * Test entry point: builds the app, starts the web server on a free port, runs
+ * every `*.mjs` test against it, then shuts the server down and asserts that no
+ * REA child process survived.
  *
- *   node web/test/run.mjs [--keep]
+ *   node web/test/run.mjs [--keep] [--no-build]
  */
 import { spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -12,6 +13,24 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const port = 4318;
+
+if (!process.argv.includes("--no-build")) {
+  console.log("Building web/dist…");
+  const code = await new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [join(root, "scripts", "build.mjs")],
+      {
+        stdio: "inherit",
+      },
+    );
+    child.on("exit", (status) => resolve(status ?? 1));
+  });
+  if (code !== 0) {
+    console.error("The build failed.");
+    process.exit(1);
+  }
+}
 
 const server = spawn(process.execPath, [join(root, "server", "index.mjs")], {
   cwd: root,

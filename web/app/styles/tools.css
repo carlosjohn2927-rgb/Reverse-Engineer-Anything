@@ -223,6 +223,17 @@
 .notice strong {
   font-size: 13px;
 }
+.notice-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.notice p {
+  font-size: 12.5px;
+  line-height: 1.5;
+  max-width: 78ch;
+}
 
 .error-card {
   display: grid;

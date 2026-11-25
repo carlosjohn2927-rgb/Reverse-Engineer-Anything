@@ -10,12 +10,21 @@ npm ci --engine-strict=false        # once, at the repository root
 npm run build:cached                # builds dist/ that the server drives
 
 cd web
+npm install                         # web's own build and test dependencies
+npm run build                       # bundles the app into web/dist
 npm start                           # http://localhost:4180
 ```
 
-REA's toolchain needs Node.js 24. If the server's own runtime is older, it
-provisions a private copy on first use (the Setup view shows progress and can
-retry it). Point it at an existing install instead with `REA_WEB_NODE`:
+`npm start` works without a build: the server falls back to the source modules
+so `npm run dev` stays a tight loop. A build is what you ship.
+
+REA's toolchain needs Node.js 24; SQLite inspection and several providers fail
+outright on older runtimes. The app handles that rather than hiding it: when
+the runtime is too old, the workspace shows a banner with the consequence and a
+one-click install, and the Setup view carries the same action. The install is
+private to this app, needs no privileges, changes nothing global, and is picked
+up by new sessions immediately. Point it at an existing install instead with
+`REA_WEB_NODE`:
 
 ```bash
 REA_WEB_NODE=/path/to/node24/bin/node npm start
@@ -43,6 +52,8 @@ cannot leak processes or memory.
 
 ```
 app/index.html          shell: rail navigation, top bar, drawer, palette
+scripts/build.mjs       esbuild + lightningcss bundle, fingerprint, shell rewrite
+dist/                   build output served in production (git-ignored)
 app/js/main.js          boot, routing, store reactions
 app/js/store.js         the single observable state object
 app/js/api.js           browser client for the HTTP API
@@ -59,18 +70,43 @@ server/samples.mjs      the built-in sample artifacts, generated locally
 The browser never talks to REA's MCP port directly — it calls this server,
 which proxies the call and relays progress notifications as NDJSON.
 
+## Build
+
+`npm run build` produces `web/dist`:
+
+| Asset            | Size  | Gzipped |
+| ---------------- | ----- | ------- |
+| `app.<hash>.js`  | 54 KB | 18 KB   |
+| `app.<hash>.css` | 24 KB | 5.6 KB  |
+
+One script replaces ten module requests. Every asset name carries a content
+hash and is served `immutable` for a year, while `index.html` stays `no-cache`
+so a deploy is picked up on the next load. The server gzips text responses on
+demand, answers `If-None-Match` with `304`, and keeps a bounded cache of
+compressed bodies. `npm run build:dev` builds unminified with an inline map.
+
 ## Checks
 
 ```bash
 npm run typecheck     # tsc --noEmit (JSDoc-typed plain JavaScript)
 npm run format:check  # oxfmt
-npm test              # starts a server, drives the app in jsdom
+npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` needs `jsdom` to be resolvable; without it the suite reports a skip
-rather than failing. It exercises the whole path: start a session, generate the
-built-in samples, pick a suggested analysis, submit the form and assert that a
-result renders, then visit every view.
+`npm test` runs three suites. `dist-smoke` loads the **built** bundle — the exact
+minified bytes, imported as a real ES module because jsdom does not execute
+`<script type="module">` — and asserts the shell references only fingerprinted
+assets. `dom-smoke` drives the readable source modules. Both cover: start a
+session, generate the built-in samples, pick a suggested analysis, submit the
+form, assert a result renders, visit every view, and check the rendered markup
+for invalid nesting. `runtime-notice` checks the other half of the runtime
+promise: on an old runtime the workspace shows the consequence up front and
+offers the install action, and on a current one it shows nothing. The runner shuts the server down afterwards and fails if
+any REA child process outlived it.
+
+`jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
+If it is missing the suites fail rather than passing quietly; set
+`REA_WEB_ALLOW_SKIP=1` to skip them deliberately.
 
 `typecheck` runs with `noImplicitAny` off: these are plain JavaScript modules
 documented with JSDoc, so inferred `any` is expected at boundaries while strict

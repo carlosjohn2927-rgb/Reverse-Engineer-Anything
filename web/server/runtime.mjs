@@ -67,9 +67,24 @@ export const supportsTypeStripping = (major) => major !== undefined;
 
 /** Install a Node.js 24 runtime next to the repository cache directory. */
 export const provisionNode24 = async (config, onProgress) => {
-  const destination = config.node24Candidates[1];
-  if (destination === undefined) throw new Error("No provisioning target.");
-  await mkdir(dirname(destination), { recursive: true });
+  // Install into the first site that is actually writable. A packaged or
+  // read-only checkout cannot host the runtime, so the per-user site takes over.
+  const sites = config.node24InstallSites ?? [];
+  let destination;
+  for (const site of sites) {
+    try {
+      await mkdir(dirname(site), { recursive: true });
+      await access(dirname(site), constants.W_OK);
+      destination = site;
+      break;
+    } catch {
+      // Try the next site.
+    }
+  }
+  if (destination === undefined)
+    throw new Error(
+      "No writable directory for the Node.js 24 runtime. Set REA_WEB_HOME to a writable path.",
+    );
   const staging = `${dirname(destination)}/install`;
   await mkdir(staging, { recursive: true });
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";

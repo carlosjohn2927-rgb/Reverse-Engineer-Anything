@@ -13,10 +13,26 @@ export const REPOSITORY_ROOT = resolve(
 export const REA_ENTRY = join(REPOSITORY_ROOT, "scripts", "rea.mjs");
 
 /** Candidate Node.js 24 binaries, ordered by preference. */
+/**
+ * Private Node.js 24 install used for REA children, in provisioning order.
+ *
+ * The repository-local one keeps a checkout self-contained; the per-user one is
+ * the fallback for packaged or read-only deployments, where writing inside the
+ * checkout is not possible.
+ */
+const node24InstallSites = (environment) => [
+  join(REPOSITORY_ROOT, ".cache", "node24", "bin", "node"),
+  join(
+    environment.REA_WEB_HOME ?? join(homedir(), ".local", "rea-web"),
+    "node24",
+    "bin",
+    "node",
+  ),
+];
+
 const node24Candidates = (environment) => [
   environment.REA_WEB_NODE,
-  join(REPOSITORY_ROOT, ".cache", "node24", "bin", "node"),
-  join(homedir(), ".local", "rea-web", "node24", "bin", "node"),
+  ...node24InstallSites(environment),
 ];
 
 const parsePort = (raw, fallback) => {
@@ -63,6 +79,7 @@ export const loadConfig = (environment = process.env) => {
     reaEntry: REA_ENTRY,
     repositoryRoot: REPOSITORY_ROOT,
     node24Candidates: node24Candidates(environment),
+    node24InstallSites: node24InstallSites(environment),
     workspaceDirectory:
       workspace !== undefined && isAbsolute(workspace)
         ? workspace

@@ -83,6 +83,7 @@ const icon = (name) => {
 /** The workspace view: launch, target list, suggestions, recent results. */
 export const renderWorkspace = (root) => {
   const container = h("div", { class: "stack view-stack" });
+  const runtimeNotice = buildRuntimeNotice();
 
   const header = h(
     "section",
@@ -335,6 +336,7 @@ export const renderWorkspace = (root) => {
   };
 
   container.append(
+    ...(runtimeNotice === null ? [] : [runtimeNotice]),
     header,
     launchers,
     targetsSection,
@@ -346,6 +348,79 @@ export const renderWorkspace = (root) => {
   renderSuggestions();
   renderActivity();
   return { container };
+};
+
+/**
+ * Warn, in the workspace itself, when the runtime behind REA is too old for
+ * part of the tool set. Setup can fix it in one click; without this banner the
+ * first sign is a `capability_unavailable` failure on a real analysis.
+ */
+const buildRuntimeNotice = () => {
+  const runtime = state.status?.runtime;
+  if (runtime === undefined) return null;
+  const major = Number(
+    String(runtime.nodeVersion ?? "")
+      .replace(/^v/u, "")
+      .split(".")[0],
+  );
+  if (major >= 24) return null;
+  const installing = state.upload?.active === true;
+  const button = h(
+    "button",
+    {
+      class: "primary-button small",
+      type: "button",
+      disabled: installing,
+      onclick: async (event) => {
+        const node = /** @type {HTMLButtonElement} */ (event.currentTarget);
+        node.disabled = true;
+        node.textContent = "Installing…";
+        try {
+          await api.installRuntime();
+          const status = await api.status();
+          set({ status });
+          toast("Node.js 24 installed", "New sessions will use it.", "info");
+          // A child started before the install keeps the old runtime, so the
+          // session has to be recreated for the new tools to work.
+          await api.endSession();
+          location.reload();
+        } catch (error) {
+          toast("Could not install Node.js 24", errorMessage(error), "error");
+          node.disabled = false;
+          node.textContent = "Install Node.js 24";
+        }
+      },
+    },
+    installing ? "Installing…" : "Install Node.js 24",
+  );
+  return h(
+    "div",
+    { class: "notice warn" },
+    h(
+      "div",
+      { class: "notice-row" },
+      h("span", { class: "badge warn", text: "runtime" }),
+      h("strong", { text: "Some analyses are unavailable on this runtime" }),
+    ),
+    h("p", {
+      class: "muted",
+      text: `REA is running on Node.js ${runtime.nodeVersion ?? "unknown"}. SQLite inspection and a few other providers need Node.js 24, which this app can install privately — nothing global is changed.`,
+    }),
+    h(
+      "div",
+      { class: "panel-actions" },
+      button,
+      h(
+        "button",
+        {
+          class: "ghost-button small",
+          type: "button",
+          onclick: () => set({ view: "setup" }),
+        },
+        "Open setup",
+      ),
+    ),
+  );
 };
 
 const emptyState = (iconName, title, body) =>
