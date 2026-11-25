@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { errorMessage, h } from "../dom.js";
+import { readinessFromCapabilities } from "../readiness.js";
 import { sectionHeader, toast } from "../ui.js";
 import { set, state } from "../store.js";
 
@@ -101,7 +102,12 @@ export const renderSetup = (root) => {
   const loadCapabilities = async () => {
     try {
       const capabilities = await api.capabilities();
-      set({ capabilities });
+      // Publish the per-operation projection so the Tools view can mark the
+      // tools that canonically cannot run here.
+      set({
+        capabilities,
+        operationReadiness: readinessFromCapabilities(capabilities),
+      });
     } catch (error) {
       set({ capabilities: { unavailable_reason: errorMessage(error) } });
     }

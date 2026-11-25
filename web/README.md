@@ -60,6 +60,7 @@ app/js/api.js           browser client for the HTTP API
 app/js/runner.js        schema-driven tool form, streamed progress, results
 app/js/families.js      tool -> family map, checked complete by the tests
 app/js/completions.js   prompt argument -> completion kind, pinned to REA's contract
+app/js/readiness.js     per-operation readiness projection (available/unavailable/unverified)
 app/js/views/*.js       one module per view
 app/js/render/          evidence projections (managed, go, sqlite, entropy, …)
 server/index.mjs        HTTP server, CORS, preview framing, shutdown
@@ -96,7 +97,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs seven suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs eight suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -120,8 +121,13 @@ pins `POST /api/capabilities` to `rea capabilities`, asserts every unavailable
 operation group carries an availability code or a reason, and checks the Setup
 view renders both the per-operation groups and the analysis-engine candidates.
 It also asserts `doctor` does not cover the host runtimes, which is why the
-panel exists. The runner shuts the server down afterwards and fails if any REA
-child process outlived it.
+panel exists. `tool-readiness` pins the projection onto tool names and, most
+importantly, its asymmetry: 10 tools are canonically unavailable here, 9 are
+confirmed available, and **214 are unverified** — a state that must never be
+rendered as a verdict. It asserts blocked cards are marked and explained, that
+unverified cards are not marked either way, and that the Tools view states the
+unknown count instead of implying everything works. The runner shuts the server
+down afterwards and fails if any REA child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
 If it is missing the suites fail rather than passing quietly; set

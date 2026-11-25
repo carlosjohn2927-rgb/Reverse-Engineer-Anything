@@ -3,6 +3,7 @@ import { api } from "./api.js";
 /** @typedef {import("./api.js").CallResult} CallResult */
 import { byId, errorMessage, h, humanize } from "./dom.js";
 import { renderResult } from "./render/evidence.js";
+import { readinessFor, readinessSummary } from "./readiness.js";
 import { recordActivity, recordEvidence } from "./store.js";
 import { toast } from "./ui.js";
 
@@ -188,6 +189,12 @@ export const launchTool = async (
     return undefined;
   }
   openDrawer();
+  // An unavailable tool still opens — the user may be inspecting what it would
+  // do — but the reason is shown up front instead of arriving as a failure.
+  const readiness = readinessFor(
+    (await import("./store.js")).state.operationReadiness,
+    toolName,
+  );
   byId("drawer-eyebrow").textContent =
     `${tool.cli ?? `rea ${toolName.replaceAll("_", "-")}`}`;
   byId("drawer-title").textContent = tool.title ?? humanize(toolName);
@@ -286,6 +293,13 @@ export const launchTool = async (
           class: "badge",
           title: "MCP annotation: openWorldHint",
           text: "Reaches a device, browser, engine or network target.",
+        })
+      : null,
+    readiness !== null && readiness.available === false
+      ? h("p", {
+          class: "badge bad",
+          title: readinessSummary(readiness),
+          text: `Unavailable on this host${readiness.code === null ? "" : ` (${readiness.code})`}`,
         })
       : null,
   );

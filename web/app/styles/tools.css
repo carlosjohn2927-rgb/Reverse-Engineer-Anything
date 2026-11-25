@@ -861,3 +861,16 @@ details.raw-details[open] > summary {
   max-height: 460px;
   overflow: auto;
 }
+
+/* ---------- Tool readiness ---------- */
+.tool-card.unavailable {
+  border-color: var(--danger-soft);
+  opacity: 0.72;
+}
+.tool-card.unavailable:hover {
+  border-color: var(--danger);
+  opacity: 1;
+}
+.tool-card .badge.bad {
+  flex: 0 0 auto;
+}
