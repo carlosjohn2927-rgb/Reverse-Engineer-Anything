@@ -1,6 +1,11 @@
 import { api } from "../api.js";
 import { errorMessage, h } from "../dom.js";
 import { readinessFromCapabilities } from "../readiness.js";
+import {
+  classifyIntegration,
+  CONFIGURED_IS_NOT_VERIFIED,
+  HOST_INTEGRATIONS,
+} from "../host-integrations.js";
 import { sectionHeader, toast } from "../ui.js";
 import { set, state } from "../store.js";
 
@@ -377,14 +382,122 @@ export const renderSetup = (root) => {
     }
   };
 
-  container.append(runtimePanel, doctorPanel, providersPanel, capabilityPanel);
+  // ---- Host integrations ----------------------------------------------
+  // The 51 tools behind adb, frida, gdb, rizin, jeb and cutter appear in
+  // neither `doctor` nor `capabilities`, so nothing in the app mentioned them.
+  // This reports configuration presence only, and says so.
+  const hostPanel = h("section", { class: "panel" });
+  const renderHost = () => {
+    const observed = state.hostIntegrations;
+    if (observed === null || observed === undefined) {
+      hostPanel.replaceChildren(
+        sectionHeader("Host integrations", "Checking configuration…"),
+      );
+      return;
+    }
+    const rows = HOST_INTEGRATIONS.map((integration) => ({
+      integration,
+      verdict: classifyIntegration(integration, observed),
+    }));
+    const configured = rows.filter((row) => row.verdict.state === "configured");
+    const gated = HOST_INTEGRATIONS.reduce(
+      (total, integration) => total + integration.tools,
+      0,
+    );
+    hostPanel.replaceChildren(
+      sectionHeader(
+        "Host integrations",
+        `${configured.length} of ${rows.length} configured · ${gated} tools depend on these`,
+        h(
+          "button",
+          {
+            class: "ghost-button small",
+            type: "button",
+            onclick: () => void loadHostIntegrations(),
+          },
+          "Re-check",
+        ),
+      ),
+      h(
+        "div",
+        { class: "notice-row" },
+        h(
+          "div",
+          { class: "notice" },
+          h("strong", { text: "Configuration is not availability" }),
+          h("p", { class: "muted small", text: CONFIGURED_IS_NOT_VERIFIED }),
+        ),
+      ),
+      h(
+        "div",
+        { class: "check-list" },
+        ...rows.map((row) =>
+          h(
+            "div",
+            { class: "check-row" },
+            h("span", {
+              class: `dot ${row.verdict.state === "configured" ? "warn" : "bad"}`,
+            }),
+            h(
+              "div",
+              { class: "check-main" },
+              h(
+                "div",
+                { class: "row" },
+                h("strong", { text: row.integration.label }),
+                h("span", {
+                  class: "badge",
+                  text: `${row.integration.tools} tool${row.integration.tools === 1 ? "" : "s"}`,
+                }),
+                row.verdict.state === "configured"
+                  ? h("span", { class: "badge warn", text: "configured" })
+                  : h("span", { class: "badge bad", text: "not configured" }),
+              ),
+              row.verdict.via === null
+                ? h("p", { class: "muted", text: row.integration.remediation })
+                : h("p", {
+                    class: "faint mono small",
+                    text: `found via ${row.verdict.via}`,
+                  }),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
+
+  const loadHostIntegrations = async () => {
+    try {
+      set({ hostIntegrations: await api.hostIntegrations() });
+    } catch (error) {
+      set({
+        hostIntegrations: {
+          env: {},
+          onPath: [],
+          verified: false,
+          error: errorMessage(error),
+        },
+      });
+    }
+    renderHost();
+  };
+
+  container.append(
+    runtimePanel,
+    doctorPanel,
+    providersPanel,
+    capabilityPanel,
+    hostPanel,
+  );
 
   root.replaceChildren(container);
   renderRuntime();
   renderProviders();
   renderCapabilities();
+  renderHost();
   void loadDoctor().then(renderProviders);
   void loadCapabilities();
+  void loadHostIntegrations();
   return { container };
 };
 

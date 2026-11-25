@@ -61,11 +61,12 @@ app/js/runner.js        schema-driven tool form, streamed progress, results
 app/js/families.js      tool -> family map, checked complete by the tests
 app/js/completions.js   prompt argument -> completion kind, pinned to REA's contract
 app/js/readiness.js     per-operation readiness projection (available/unavailable/unverified)
+app/js/host-integrations.js which host runtimes gate which tools, and how to configure them
 app/js/views/*.js       one module per view
 app/js/render/          evidence projections (managed, go, sqlite, entropy, …)
 server/index.mjs        HTTP server, CORS, preview framing, shutdown
-server/api.mjs          routes: status, doctor, capabilities, sessions, calls, prompts,
-                        completions, uploads
+server/api.mjs          routes: status, doctor, capabilities, host integrations, sessions,
+                        calls, prompts, completions, uploads
 server/rea-host.mjs     one REA MCP child process per browser session
 server/mcp.mjs          raw JSON-RPC client for REA's streamable HTTP MCP mode
 server/samples.mjs      the built-in sample artifacts, generated locally
@@ -97,7 +98,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs eight suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs nine suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -126,8 +127,18 @@ importantly, its asymmetry: 10 tools are canonically unavailable here, 9 are
 confirmed available, and **214 are unverified** — a state that must never be
 rendered as a verdict. It asserts blocked cards are marked and explained, that
 unverified cards are not marked either way, and that the Tools view states the
-unknown count instead of implying everything works. The runner shuts the server
-down afterwards and fails if any REA child process outlived it.
+unknown count instead of implying everything works. `host-integrations` covers
+the third absence: 51 tools need a host runtime — adb, frida, gdb, rizin, jeb,
+cutter, tshark, apktool, binwalk, objdump — and those runtimes appear in neither
+`capabilities` nor `doctor`, so nothing in the product said whether a tool could
+work. `GET /api/host-integrations` reports which settings are set and which
+binaries are on `PATH`, by reading the environment and calling `accessSync` —
+it never spawns a runtime, so it cannot prove one works, and the payload always
+says `verified: false`. The panel therefore states configuration, not
+availability, and gives no configured runtime a green dot. On this host all ten
+settings are unset and only `objdump` is on `PATH`: one configured, nine not,
+and none verified. The runner shuts the server down afterwards and fails if any
+REA child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
 If it is missing the suites fail rather than passing quietly; set

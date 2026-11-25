@@ -504,6 +504,75 @@ export const createApi = ({ config, host, log }) => {
   });
 
   /**
+   * Configuration presence for the host integrations REA never inspects.
+   *
+   * adb, frida, gdb, rizin, jeb, cutter and the rest gate 51 of the 233 tools,
+   * and neither `capabilities` nor `doctor` reports them. This only observes
+   * whether the setting REA documents is present or the binary resolves on
+   * PATH — it does not run them, so "configured" must never become
+   * "available". Read-only: nothing is spawned or executed here.
+   */
+  route("GET", "/api/host-integrations", async (_request, response) => {
+    const watched = [
+      "REA_ADB_PATH",
+      "REA_FRIDA_PYTHON",
+      "REA_PWNTOOLS_PYTHON",
+      "REA_GDB_COMMAND",
+      "REA_RIZIN_COMMAND",
+      "REA_JEB_MCP_URL",
+      "REA_CUTTER_BRIDGE_DIR",
+      "REA_TSHARK_COMMAND",
+      "REA_APKTOOL_COMMAND",
+      "REA_BINWALK_COMMAND",
+      "REA_OBJDUMP_COMMAND",
+    ];
+    const binaries = [
+      "adb",
+      "gdb",
+      "rizin",
+      "tshark",
+      "apktool",
+      "binwalk",
+      "objdump",
+    ];
+    const { accessSync, constants } = await import("node:fs");
+    const { delimiter, join: joinPath } = await import("node:path");
+    const onPath = [];
+    const searchPath = process.env.PATH ?? "";
+    for (const binary of binaries) {
+      const found = searchPath
+        .split(delimiter)
+        .filter((entry) => entry.length > 0)
+        .some((entry) => {
+          try {
+            accessSync(joinPath(entry, binary), constants.X_OK);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+      if (found) onPath.push(binary);
+    }
+    sendJson(response, 200, {
+      // Use null, not undefined: JSON.stringify drops undefined keys, which
+      // made "this setting is not set" indistinguishable from "this setting
+      // was never probed" on the client.
+      env: Object.fromEntries(
+        watched.map((name) => {
+          const value = process.env[name];
+          return [
+            name,
+            typeof value === "string" && value.length > 0 ? value : null,
+          ];
+        }),
+      ),
+      onPath,
+      // Presence is all this can establish; the UI says so next to the result.
+      verified: false,
+    });
+  });
+
+  /**
    * Per-operation capability readiness.
    *
    * `rea doctor` answers "is this engine installed". It does not answer the

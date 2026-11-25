@@ -141,6 +141,12 @@ export const api = {
     }),
 
   /**
+   * Configuration presence for the host integrations REA never inspects.
+   * Presence only — nothing is executed, so this is not availability.
+   */
+  hostIntegrations: () => request("/api/host-integrations"),
+
+  /**
    * Per-operation capability readiness from `rea capabilities`.
    *
    * @returns {Promise<{
