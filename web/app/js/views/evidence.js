@@ -103,6 +103,10 @@ const evidenceRow = (entry) => {
       class: "evidence-row",
       ontoggle: (event) => {
         const node = /** @type {HTMLDetailsElement} */ (event.target);
+        // The panel starts hidden so a collapsed row costs nothing to lay out;
+        // opening the row has to reveal it, or the payload below the summary
+        // stays invisible.
+        details.hidden = !node.open;
         if (node.open && details.childElementCount === 0) {
           details.append(
             renderResult({

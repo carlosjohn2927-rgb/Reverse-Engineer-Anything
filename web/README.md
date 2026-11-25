@@ -93,7 +93,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs three suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs four suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -101,7 +101,10 @@ session, generate the built-in samples, pick a suggested analysis, submit the
 form, assert a result renders, visit every view, and check the rendered markup
 for invalid nesting. `runtime-notice` checks the other half of the runtime
 promise: on an old runtime the workspace shows the consequence up front and
-offers the install action, and on a current one it shows nothing. The runner shuts the server down afterwards and fails if
+offers the install action, and on a current one it shows nothing.
+`drawer-dismiss` opens the tool runner and closes it three ways — button, scrim
+and Escape — asserting that a closed overlay is both `hidden` and
+`display: none`, so an author `display` rule can never leave it on screen. The runner shuts the server down afterwards and fails if
 any REA child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.

@@ -78,6 +78,16 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute must win over any author `display` rule below.
+   The UA sheet's `[hidden] { display: none }` loses to `.drawer { display:
+   flex }`, `.tool-form-advanced { display: grid }` and friends, which left
+   closed overlays on screen and `hidden` panels visible.
+   `:where()` keeps the specificity at one attribute selector while
+   `!important` beats later and more specific author rules. */
+[hidden]:where(:not([hidden="until-found"])) {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
