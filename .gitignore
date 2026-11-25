@@ -22,6 +22,11 @@ env/
 *.swo
 *~
 
+# Web workspace runtime state and build output
+/web/node_modules/
+/web/.cache/
+/web/dist/
+
 # Local agent tooling
 .codex/
 .devin/

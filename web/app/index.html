@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>REA · Reverse Engineer Anything</title>
+    <meta
+      name="description"
+      content="A local web workspace for REA: inspect binaries, applications and runtime behaviour, and read the evidence behind every result."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles/app.css" />
+    <link rel="stylesheet" href="/styles/tools.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="app" id="app">
+      <aside class="rail" aria-label="Workspace">
+        <div class="brand">
+          <svg viewBox="0 0 32 32" aria-hidden="true" class="brand-mark">
+            <path
+              d="M7 25V7h9.2c4 0 6.4 2.1 6.4 5.6 0 2.6-1.4 4.4-3.8 5.1L21 17l4.2 8h-4.7l-3.8-7.6h-5.2V25H7Zm4.5-11.2h4.2c1.7 0 2.7-.9 2.7-2.4s-1-2.4-2.7-2.4h-4.2v4.8Z"
+            />
+          </svg>
+          <div class="brand-text">
+            <strong>REA</strong>
+            <span>Reverse Engineer Anything</span>
+          </div>
+        </div>
+
+        <nav class="rail-nav" aria-label="Views">
+          <button class="rail-link" data-view="workspace" aria-current="page">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <path d="M3.5 4.5h13v3h-13zM3.5 9.5h7v6h-7zM12.5 9.5h4v6h-4z" />
+              </svg>
+            </span>
+            <span>Workspace</span>
+          </button>
+          <button class="rail-link" data-view="targets">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <path
+                  d="M10 3.2 15.4 6.3v6.9L10 16.5 4.6 13.2V6.3L10 3.2Zm0 2.1L6.3 7.4v4.4l3.7 2.1 3.7-2.1V7.4L10 5.3Z"
+                />
+              </svg>
+            </span>
+            <span>Targets</span>
+          </button>
+          <button class="rail-link" data-view="tools">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <path
+                  d="M6.2 3.4a4.2 4.2 0 0 0 5.3 5.3l4.4 4.4-1.5 1.5-4.4-4.4a4.2 4.2 0 0 1-5.3-5.3l2.5 2.5 1.6-.4.4-1.6-3-2Z"
+                />
+              </svg>
+            </span>
+            <span>Tools</span>
+            <span
+              class="rail-count"
+              id="rail-tool-count"
+              aria-hidden="true"
+            ></span>
+          </button>
+          <button class="rail-link" data-view="workflows">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <path
+                  d="M6 3.5h8v1.8H6V3.5Zm-1.6 3h11.2v1.8H4.4V6.5Zm1.6 3h8v1.8H6V9.5Zm-1.6 3h11.2v1.8H4.4v-1.8Zm1.6 3h8v1.8H6v-1.8Z"
+                />
+              </svg>
+            </span>
+            <span>Workflows</span>
+          </button>
+          <button class="rail-link" data-view="evidence">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <path
+                  d="M5 3h7l3 3v11H5V3Zm2 2v10h6V7h-2V5H7Zm1 4h4v1.4H8V9Zm0 3h4v1.4H8V12Z"
+                />
+              </svg>
+            </span>
+            <span>Evidence</span>
+            <span
+              class="rail-count"
+              id="rail-evidence-count"
+              aria-hidden="true"
+            ></span>
+          </button>
+          <button class="rail-link" data-view="setup">
+            <span class="rail-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20">
+                <path
+                  d="M9 2.5h2l.4 2.1c.5.2 1 .4 1.4.8l2-.8 1 1.7-1.6 1.5c.1.3.1.7.1 1s0 .7-.1 1l1.6 1.5-1 1.7-2-.8c-.4.3-.9.6-1.4.8L11 17.5H9l-.4-2.1c-.5-.2-1-.4-1.4-.8l-2 .8-1-1.7 1.6-1.5a5.4 5.4 0 0 1 0-2L4.2 8.7l1-1.7 2 .8c.4-.3.9-.6 1.4-.8L9 2.5ZM10 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"
+                />
+              </svg>
+            </span>
+            <span>Setup</span>
+          </button>
+        </nav>
+
+        <div class="rail-footer">
+          <button class="ghost-button small" id="theme-toggle" type="button">
+            <span id="theme-label">Dark</span> theme
+          </button>
+          <div class="rail-status" id="rail-status">
+            <span class="dot" id="rail-status-dot" aria-hidden="true"></span>
+            <span id="rail-status-text">Connecting…</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main" id="main">
+        <header class="topbar">
+          <div class="topbar-title">
+            <h1 id="view-title">Workspace</h1>
+            <p id="view-subtitle">
+              Inspect a target and read the evidence behind it.
+            </p>
+          </div>
+          <div class="topbar-actions">
+            <div
+              class="runtime-chip"
+              id="runtime-chip"
+              title="Runtime used for REA analysis"
+            >
+              <span class="dot" aria-hidden="true"></span>
+              <span id="runtime-chip-text">Runtime</span>
+            </div>
+            <button class="ghost-button" id="command-button" type="button">
+              <kbd>⌘</kbd><kbd>K</kbd> Command
+            </button>
+          </div>
+        </header>
+
+        <div class="view-root" id="view-root" tabindex="-1">
+          <div class="boot-card" id="boot-card">
+            <div class="boot-spinner" aria-hidden="true"></div>
+            <p>Starting a REA session…</p>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div
+      class="toast-stack"
+      id="toasts"
+      aria-live="polite"
+      aria-atomic="false"
+    ></div>
+    <dialog class="palette" id="palette" aria-label="Command palette">
+      <input
+        type="search"
+        id="palette-input"
+        placeholder="Search tools, targets and views…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <ul id="palette-results" role="listbox" aria-label="Results"></ul>
+      <footer class="palette-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> run</span>
+        <span><kbd>esc</kbd> close</span>
+      </footer>
+    </dialog>
+
+    <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+    <aside class="drawer" id="drawer" hidden aria-label="Tool runner">
+      <header class="drawer-header">
+        <div>
+          <p class="eyebrow" id="drawer-eyebrow">Tool</p>
+          <h2 id="drawer-title">Run</h2>
+        </div>
+        <button
+          class="icon-button"
+          id="drawer-close"
+          type="button"
+          aria-label="Close tool runner"
+        >
+          <svg viewBox="0 0 20 20">
+            <path
+              d="m5.2 5.2 9.6 9.6-1.4 1.4-9.6-9.6 1.4-1.4Zm8.2 0 1.4 1.4-9.6 9.6L3.8 14.8l9.6-9.6Z"
+            />
+          </svg>
+        </button>
+      </header>
+      <div class="drawer-body" id="drawer-body"></div>
+    </aside>
+
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>
