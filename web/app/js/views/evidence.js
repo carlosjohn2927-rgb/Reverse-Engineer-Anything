@@ -8,36 +8,48 @@ import { BUNDLE_TRANSFER_NOTE, describeTransfer } from "../evidence-bundle.js";
 /** Evidence view: every result with an evidence id, searchable and copyable. */
 export const renderEvidence = (root) => {
   const container = h("div", { class: "stack view-stack" });
-  const search = state.evidenceSearch ?? "";
-  const filtered = state.evidence.filter((entry) => {
-    if (search.length === 0) return true;
-    const haystack =
-      `${entry.tool} ${entry.payload?.evidence_id ?? ""} ${entry.payload?.subject?.name ?? ""}`.toLowerCase();
-    return haystack.includes(search.toLowerCase());
+  const list = h("div", { class: "evidence-list" });
+  const searchInput = h("input", {
+    type: "search",
+    placeholder: "Filter by tool, evidence id or subject…",
+    value: state.evidenceSearch ?? "",
+    oninput: (event) => {
+      state.evidenceSearch = inputOf(event).value;
+      renderList();
+    },
   });
-
-  const list = h(
-    "div",
-    { class: "evidence-list" },
-    ...(filtered.length === 0
-      ? [
-          h(
-            "div",
-            { class: "empty-state" },
-            h("h3", {
-              text:
-                state.evidence.length === 0 ? "No evidence yet" : "No matches",
-            }),
-            h("p", {
-              text:
-                state.evidence.length === 0
-                  ? "Every REA analysis returns a canonical Evidence record. Run a tool and it will appear here with its provider, confidence and limitations."
-                  : "Try a different tool name, evidence id or subject.",
-            }),
-          ),
-        ]
-      : filtered.map((entry) => evidenceRow(entry))),
-  );
+  const renderList = () => {
+    const search = (state.evidenceSearch ?? "").toLowerCase();
+    const filtered = state.evidence.filter((entry) => {
+      if (search.length === 0) return true;
+      const haystack =
+        `${entry.tool} ${entry.payload?.evidence_id ?? ""} ${entry.payload?.subject?.name ?? ""}`.toLowerCase();
+      return haystack.includes(search);
+    });
+    list.replaceChildren(
+      ...(filtered.length === 0
+        ? [
+            h(
+              "div",
+              { class: "empty-state" },
+              h("h3", {
+                text:
+                  state.evidence.length === 0
+                    ? "No evidence yet"
+                    : "No matches",
+              }),
+              h("p", {
+                text:
+                  state.evidence.length === 0
+                    ? "Every REA analysis returns a canonical Evidence record. Run a tool and it will appear here with its provider, confidence and limitations."
+                    : "Try a different tool name, evidence id or subject.",
+              }),
+            ),
+          ]
+        : filtered.map((entry) => evidenceRow(entry))),
+    );
+  };
+  renderList();
 
   container.append(
     h(
@@ -48,19 +60,7 @@ export const renderEvidence = (root) => {
         `${state.evidence.length} record${state.evidence.length === 1 ? "" : "s"} retained in this session`,
       ),
       bundleTransferPanel(),
-      h(
-        "div",
-        { class: "tree-toolbar" },
-        h("input", {
-          type: "search",
-          placeholder: "Filter by tool, evidence id or subject…",
-          value: search,
-          oninput: (event) => {
-            state.evidenceSearch = inputOf(event).value;
-            renderEvidence(root);
-          },
-        }),
-      ),
+      h("div", { class: "tree-toolbar" }, searchInput),
       list,
     ),
   );
@@ -218,10 +218,13 @@ const bundleTransferPanel = () => {
               type: "application/json",
             });
             const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
+            const downloadUrl = URL.createObjectURL(blob);
+            link.href = downloadUrl;
             link.download = bundle.name;
+            document.body.append(link);
             link.click();
-            URL.revokeObjectURL(link.href);
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
             outcome.replaceChildren(
               h(
                 "div",

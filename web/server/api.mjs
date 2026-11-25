@@ -1,6 +1,15 @@
 import { createWriteStream } from "node:fs";
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { readJsonBody, sendError, sendJson } from "./http.mjs";
@@ -661,6 +670,184 @@ export const createApi = ({ config, host, log }) => {
     }
   });
 
+  /** Start a browser-selected directory upload in this session's workspace. */
+  route("POST", "/api/folder-uploads", async (request, response, body) => {
+    const session = await sessionOf(request, response, body);
+    if (session === undefined) return;
+    const name = basename(String(body?.name ?? "folder"))
+      .replace(/[^A-Za-z0-9._ -]/gu, "_")
+      .slice(0, 80);
+    if (name.length === 0 || name === "." || name === "..")
+      return sendError(
+        response,
+        400,
+        "folder_name_invalid",
+        "Choose a directory with a valid name.",
+      );
+    const folderId = randomUUID();
+    const path = join(session.workspace, "uploaded-folders", folderId);
+    await mkdir(path, { recursive: true });
+    sendJson(response, 201, { folderId, name, path });
+  });
+
+  /** Stream one relative file into a session-owned uploaded folder. */
+  route(
+    "PUT",
+    "/api/folder-uploads/file",
+    async (request, response, _body, url) => {
+      const session = await sessionOf(request, response, undefined);
+      if (session === undefined) return;
+      const folderId = url.searchParams.get("folderId") ?? "";
+      const relativePath = url.searchParams.get("path") ?? "";
+      const segments = relativePath.split(/[\\/]/u);
+      if (
+        !/^[0-9a-f-]{36}$/iu.test(folderId) ||
+        relativePath.length === 0 ||
+        relativePath.length > 4096 ||
+        segments.some(
+          (segment) =>
+            segment.length === 0 ||
+            segment === "." ||
+            segment === ".." ||
+            segment.length > 255 ||
+            segment.includes("\0"),
+        )
+      )
+        return sendError(
+          response,
+          400,
+          "folder_path_invalid",
+          "The uploaded file path must be a safe relative path inside the selected directory.",
+        );
+
+      const folderPath = resolve(
+        session.workspace,
+        "uploaded-folders",
+        folderId,
+      );
+      const destination = resolve(folderPath, ...segments);
+      if (!destination.startsWith(`${folderPath}${sep}`))
+        return sendError(
+          response,
+          400,
+          "folder_path_invalid",
+          "The uploaded file path must stay inside the selected directory.",
+        );
+      const folderInfo = await lstat(folderPath).catch(() => null);
+      if (folderInfo === null || !folderInfo.isDirectory())
+        return sendError(
+          response,
+          404,
+          "folder_upload_missing",
+          "Start a directory upload before sending its files.",
+        );
+
+      const limit = config.uploadLimitBytes;
+      await mkdir(dirname(destination), { recursive: true });
+      const temporary = join(
+        dirname(destination),
+        `.${basename(destination)}.${randomUUID()}.partial`,
+      );
+      const output = createWriteStream(temporary, { flags: "wx" });
+      let received = 0;
+      try {
+        for await (const chunk of request) {
+          received += chunk.length;
+          if (received > limit) {
+            output.destroy();
+            await rm(temporary, { force: true });
+            return sendError(
+              response,
+              413,
+              "upload_too_large",
+              `Each folder file is limited to ${Math.round(limit / (1024 * 1024))} MiB.`,
+            );
+          }
+          if (!output.write(chunk))
+            await new Promise((resolveDrain) =>
+              output.once("drain", () => resolveDrain(undefined)),
+            );
+        }
+        await new Promise((resolveEnd, rejectEnd) => {
+          output.end((error) =>
+            error === undefined || error === null
+              ? resolveEnd(undefined)
+              : rejectEnd(error),
+          );
+        });
+        await rename(temporary, destination);
+        sendJson(response, 201, {
+          folderId,
+          relativePath: segments.join("/"),
+          path: destination,
+          bytes: received,
+          sha256: await sha256File(destination),
+        });
+      } catch (error) {
+        output.destroy();
+        await rm(temporary, { force: true }).catch(() => undefined);
+        throw error;
+      }
+    },
+  );
+
+  /** Download one regular file owned by the current session workspace. */
+  route(
+    "GET",
+    "/api/workspace/download",
+    async (request, response, _body, url) => {
+      const session = await sessionOf(request, response, undefined);
+      if (session === undefined) return;
+      const name = url.searchParams.get("name");
+      if (
+        name === null ||
+        name.length === 0 ||
+        name === "." ||
+        name === ".." ||
+        basename(name) !== name
+      )
+        return sendError(
+          response,
+          400,
+          "workspace_filename_invalid",
+          "Name one file inside the current session workspace.",
+        );
+
+      const path = join(session.workspace, name);
+      let info;
+      try {
+        info = await lstat(path);
+      } catch (error) {
+        if (error?.code === "ENOENT")
+          return sendError(
+            response,
+            404,
+            "workspace_file_missing",
+            "That file is not in the current session workspace.",
+          );
+        throw error;
+      }
+      if (!info.isFile())
+        return sendError(
+          response,
+          404,
+          "workspace_file_missing",
+          "That file is not a regular file in the current session workspace.",
+        );
+
+      const contents = await readFile(path);
+      const fallbackName = name.replace(/[^A-Za-z0-9._-]/gu, "_");
+      response.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-length": contents.byteLength,
+        "content-disposition": `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      });
+      response.end(contents);
+    },
+  );
+
   /** Write a byte range into the session workspace (used by the hex viewer). */
   route("POST", "/api/workspace/text", async (request, response, body) => {
     const session = await sessionOf(request, response, body);
@@ -668,6 +855,7 @@ export const createApi = ({ config, host, log }) => {
     const name = basename(String(body?.name ?? "input.txt"));
     const text = String(body?.text ?? "");
     const destination = join(session.workspace, name);
+    await mkdir(session.workspace, { recursive: true });
     await writeFile(destination, text, "utf8");
     sendJson(response, 201, {
       path: destination,

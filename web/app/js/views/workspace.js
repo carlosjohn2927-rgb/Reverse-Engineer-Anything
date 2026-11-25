@@ -51,6 +51,14 @@ const LAUNCHERS = [
     icon: "folder",
   },
   {
+    id: "website",
+    title: "Inspect a website",
+    blurb:
+      "Find an open website tab through a connected Chrome or Chromium browser.",
+    action: "website",
+    icon: "website",
+  },
+  {
     id: "tool",
     title: "Run a tool directly",
     blurb: "All 233 REA tools with schema-driven forms and streamed progress.",
@@ -66,6 +74,8 @@ const icon = (name) => {
     upload:
       "M10 3v8.2l2.9-2.9 1.4 1.4L10 14l-4.3-4.3 1.4-1.4 2.9 2.9V3h2ZM4 15h12v2H4v-2Z",
     folder: "M3 5h5l1.5 2H17v9H3V5Z",
+    website:
+      "M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Zm5.4 6.6h-2.2a12 12 0 0 0-.9-4 5.6 5.6 0 0 1 3.1 4Zm-5.4-4.8c.7 1 1.2 2.8 1.4 4.8H8.6c.2-2  .7-3.8 1.4-4.8ZM4.6 11h2.2c.1 1.5.4 2.9.9 4a5.6 5.6 0 0 1-3.1-4Zm2.2-1.9H4.6a5.6 5.6 0 0 1 3.1-4 12 12 0 0 0-.9 4Zm1.8 1.9h2.8c-.2 2-.7 3.8-1.4 4.8-.7-1-1.2-2.8-1.4-4.8Zm3.7 4a12 12 0 0 0 .9-4h2.2a5.6 5.6 0 0 1-3.1 4Z",
     wrench:
       "M6.2 3.4a4.2 4.2 0 0 0 5.3 5.3l4.4 4.4-1.5 1.5-4.4-4.4a4.2 4.2 0 0 1-5.3-5.3l2.5 2.5 1.6-.4.4-1.6-3-2Z",
     file: "M5 3h7l3 3v11H5V3Zm2 2v10h6V7h-2V5H7Z",
@@ -91,11 +101,11 @@ export const renderWorkspace = (root) => {
     h(
       "div",
       { class: "hero-copy" },
-      h("p", { class: "eyebrow", text: "Analysis workspace" }),
-      h("h2", { text: "Understand how it works, down to the binary." }),
+      h("p", { class: "eyebrow", text: "LOCAL ANALYSIS · PRIVATE SESSION" }),
+      h("h2", { text: "What are we looking at today?" }),
       h("p", {
         class: "muted",
-        text: "Point REA at a binary, application or capture. Each result carries the provider, confidence and limitations behind it.",
+        text: "Choose an app, binary, or capture. REA will suggest the right analysis and show the evidence behind every result.",
       }),
     ),
     h(
@@ -106,14 +116,51 @@ export const renderWorkspace = (root) => {
         {
           class: "primary-button",
           type: "button",
+          title:
+            state.selectedTarget === null
+              ? "Choose or upload a target before analysis"
+              : `Analyse ${state.selectedTarget.name}`,
+          onclick: () => {
+            void analyzeSelectedTarget();
+          },
+        },
+        "Analyse selected target",
+      ),
+      h(
+        "button",
+        {
+          class: "ghost-button",
+          type: "button",
           onclick: () => openFolderPicker(),
         },
-        "Inspect a folder",
+        "＋ Add a target",
       ),
       h(
         "button",
         { class: "ghost-button", type: "button", onclick: () => chooseFiles() },
         "Upload files",
+      ),
+    ),
+  );
+
+  const workspaceStats = h(
+    "section",
+    { class: "workspace-stats", "aria-label": "Session overview" },
+    ...[
+      ["Targets", state.targets.length, "artifacts in this session"],
+      ["Analyses", state.activity.length, "tool runs recorded"],
+      ["Evidence", state.evidence.length, "results retained here"],
+    ].map(([label, value, hint]) =>
+      h(
+        "div",
+        { class: "workspace-stat" },
+        h("span", { class: "workspace-stat-mark", "aria-hidden": "true" }),
+        h(
+          "div",
+          {},
+          h("strong", { text: String(value) }),
+          h("span", { class: "faint", text: `${label} · ${hint}` }),
+        ),
       ),
     ),
   );
@@ -131,6 +178,7 @@ export const renderWorkspace = (root) => {
             if (launcher.action === "samples") return generateSamples();
             if (launcher.action === "upload") return chooseFiles();
             if (launcher.action === "folder") return openFolderPicker();
+            if (launcher.action === "website") return set({ view: "targets" });
             set({ view: "tools" });
           },
         },
@@ -148,6 +196,12 @@ export const renderWorkspace = (root) => {
   const targetsSection = h("section", { class: "panel" });
   const suggestions = h("section", { class: "panel" });
   const activitySection = h("section", { class: "panel" });
+  const dashboardColumns = h(
+    "div",
+    { class: "dashboard-columns" },
+    targetsSection,
+    activitySection,
+  );
 
   const renderTargets = () => {
     targetsSection.replaceChildren(
@@ -338,10 +392,10 @@ export const renderWorkspace = (root) => {
   container.append(
     ...(runtimeNotice === null ? [] : [runtimeNotice]),
     header,
+    workspaceStats,
     launchers,
-    targetsSection,
+    dashboardColumns,
     suggestions,
-    activitySection,
   );
   root.replaceChildren(container);
   renderTargets();
@@ -453,7 +507,7 @@ const generateSamples = async () => {
       "Building a .NET assembly, WASM module, SQLite database and entropy file…",
     );
     const payload = await api.samples();
-    let selected;
+    let managedTarget;
     for (const file of payload.files) {
       const stored = addTarget({
         name: file.name,
@@ -462,13 +516,54 @@ const generateSamples = async () => {
         sha256: file.sha256,
         sample: file.id,
       });
-      if (file.id === "managed") selected = stored;
+      if (file.id === "managed") managedTarget = stored;
     }
-    set({ selectedTarget: selected ?? state.targets[0] });
+    set({ selectedTarget: managedTarget ?? state.targets[0] });
+    if (managedTarget === undefined) {
+      toast(
+        "Samples ready",
+        `${payload.files.length} artifacts were generated, but the .NET sample was not returned for the quick analysis.`,
+        "warn",
+      );
+      return;
+    }
     toast(
       "Samples ready",
-      `${payload.files.length} artifacts written to the session workspace.`,
+      "Starting a .NET sample analysis; the other generated artifacts are available as targets.",
       "info",
+    );
+    let result;
+    try {
+      result = await api.callTool("inspect_managed_artifact", {
+        path: managedTarget.path,
+      });
+    } catch (error) {
+      toast("Samples ready, but analysis failed", errorMessage(error), "error");
+      return;
+    }
+    recordActivity({
+      tool: "inspect_managed_artifact",
+      status: result.status,
+      durationMs: result.durationMs,
+      subject: result.payload?.subject?.name,
+      evidenceId: result.payload?.evidence_id,
+    });
+    if (result.payload?.evidence_id !== undefined)
+      recordEvidence({
+        tool: "inspect_managed_artifact",
+        status: result.status,
+        payload: result.payload,
+        durationMs: result.durationMs,
+      });
+    toast(
+      result.status === "ok"
+        ? "Sample analysis complete"
+        : "Sample analysis failed",
+      result.status === "ok"
+        ? "See Recent results or Evidence for the .NET sample findings."
+        : (result.error?.message ??
+            "REA could not analyze the generated sample."),
+      result.status === "ok" ? "info" : "error",
     );
   } catch (error) {
     toast("Could not generate samples", errorMessage(error), "error");
@@ -513,6 +608,38 @@ const chooseFiles = () => {
 };
 
 const openFolderPicker = () => set({ view: "targets" });
+
+const analyzeSelectedTarget = async () => {
+  const target = state.selectedTarget;
+  if (target === null) {
+    toast(
+      "Choose a target first",
+      "Add a folder, upload a file, or analyse a built-in sample before running an analysis.",
+      "warn",
+    );
+    return;
+  }
+  const kinds =
+    target.kind === "folder"
+      ? [kindForPath("app.js")]
+      : kindsForPath(target.path ?? target.name);
+  const toolName = [
+    ...new Set(kinds.flatMap((kind) => PRESETS[kind.id] ?? PRESETS.file)),
+  ].find((name) => state.toolsByName.has(name));
+  if (toolName === undefined) {
+    toast(
+      "No analysis tool found",
+      `REA has no matching preset for ${target.name}. Browse the tool catalog to choose one manually.`,
+      "warn",
+    );
+    return;
+  }
+  await launchTool(
+    toolName,
+    presetsFor(state.toolsByName.get(toolName), target),
+    { autoRun: true },
+  );
+};
 
 /** Start one preset analysis directly from the workspace. */
 export const runPreset = async (toolName, args) => {
