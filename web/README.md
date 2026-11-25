@@ -63,6 +63,7 @@ app/js/completions.js   prompt argument -> completion kind, pinned to REA's cont
 app/js/readiness.js     per-operation readiness projection (available/unavailable/unverified)
 app/js/host-integrations.js which host runtimes gate which tools, and how to configure them
 app/js/evidence-bundle.js what a bundle transfer can and cannot claim
+app/js/guidance.js      search REA's installed docs; a miss is not a verdict
 app/js/views/*.js       one module per view
 app/js/render/          evidence projections (managed, go, sqlite, entropy, …)
 server/index.mjs        HTTP server, CORS, preview framing, shutdown
@@ -100,7 +101,7 @@ npm run format:check  # oxfmt
 npm test              # builds, starts a server, drives the app in jsdom
 ```
 
-`npm test` runs ten suites. `dist-smoke` loads the **built** bundle — the exact
+`npm test` runs eleven suites. `dist-smoke` loads the **built** bundle — the exact
 minified bytes, imported as a real ES module because jsdom does not execute
 `<script type="module">` — and asserts the shell references only fingerprinted
 assets. `dom-smoke` drives the readable source modules. Both cover: start a
@@ -150,8 +151,15 @@ path inside the session workspace and serving REA's bytes unmodified. The suite
 asserts the old shape is still rejected, that an exported bundle has REA's
 exact seven-array shape and reimports, that a rejection keeps REA's own code
 and merges nothing, and that an empty bundle is reported as valid rather than
-as a failure. The runner shuts the server down afterwards and fails if any
-REA child process outlived it.
+as a failure. `guidance-search` covers the last unreachable surface: REA
+installs a documentation bundle behind `search_guidance` and
+`read_guidance_section`, which the workspace listed but never let anyone call.
+The Workflows view now searches and reads it. The suite pins REA's own
+sentence — "This does not indicate whether an analysis capability is
+available" — through projection, summary and rendered view, so a miss can never
+read as "this can't be done". It also pins the locator rule: a token opens only
+the bundle that minted it, and a forged one is refused. The runner shuts the
+server down afterwards and fails if any REA child process outlived it.
 
 `jsdom` is a dev dependency of `web/`, so a plain `npm install` here is enough.
 If it is missing the suites fail rather than passing quietly; set

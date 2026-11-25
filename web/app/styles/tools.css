@@ -914,3 +914,70 @@ details.raw-details[open] > summary {
   white-space: nowrap;
   border: 0;
 }
+
+/* Guidance search. Results are REA's documentation, styled as readable
+   text rather than as findings: no badge, no status colour. */
+.guidance-search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+.guidance-input {
+  flex: 1;
+  min-width: 0;
+}
+.guidance-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.guidance-results:empty {
+  display: none;
+}
+.guidance-match {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+}
+.guidance-match:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+.guidance-heading {
+  font-weight: 600;
+}
+.guidance-terms {
+  font-size: 11px;
+  color: var(--muted, #94a3b8);
+}
+.guidance-context {
+  overflow: hidden;
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  color: var(--muted, #94a3b8);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.guidance-reader:empty {
+  display: none;
+}
+.guidance-reader {
+  padding-top: 8px;
+}
+.guidance-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  padding-bottom: 6px;
+}
+.notice-note.warn {
+  color: var(--warn, #fbbf24);
+}

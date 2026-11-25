@@ -90,6 +90,9 @@ const listeners = new Set();
  *   toolFamily: string,
  *   toolSearch: string,
  *   evidenceSearch: string,
+ *   guidanceSearch: { query: string, result: import("./guidance.js").GuidanceSearch } | null,
+ *   guidanceSection: (import("./guidance.js").GuidanceSectionResult & { locator: string }) | null,
+ *   guidanceQuery: string,
  *   lastTree: any[],
  * }} State
  */
@@ -120,6 +123,11 @@ export const state = {
   toolFamily: "all",
   toolSearch: "",
   evidenceSearch: "",
+  /** @type {{ query: string, result: import("./guidance.js").GuidanceSearch } | null} */
+  guidanceSearch: null,
+  /** @type {(import("./guidance.js").GuidanceSectionResult & { locator: string }) | null} */
+  guidanceSection: null,
+  guidanceQuery: "",
   lastTree: [],
 };
 

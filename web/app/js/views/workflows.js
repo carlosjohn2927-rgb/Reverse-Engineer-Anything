@@ -3,6 +3,12 @@ import { completionKindFor } from "../completions.js";
 import { errorMessage, h, humanize } from "../dom.js";
 import { state } from "../store.js";
 import { copyButton, sectionHeader, toast } from "../ui.js";
+import {
+  guidanceFromSearch,
+  guidanceFromSection,
+  guidanceSummary,
+  validateQuery,
+} from "../guidance.js";
 
 /**
  * Workflows view: REA's six MCP prompts.
@@ -68,6 +74,7 @@ export const renderWorkflows = (root) => {
             ),
           ),
         ]),
+    guidancePanel(),
     cards,
   );
   root.replaceChildren(container);
@@ -276,3 +283,216 @@ const workflowCard = (prompt) => {
 };
 
 export { humanize };
+
+/**
+ * Guidance search.
+ *
+ * REA installs a guidance bundle and ships two tools over it. The workspace
+ * listed both in a "guidance" family and gave no way to call them, so the
+ * documented procedure for a task was unreachable unless you already knew the
+ * tool name and its locator format. Searching and reading is the whole surface:
+ * a result is a section of REA's own documentation, opened by the opaque
+ * locator REA minted for it.
+ *
+ */
+const guidancePanel = () => {
+  const results = h("div", { class: "guidance-results" });
+  const reader = h("div", { class: "guidance-reader" });
+  const input = /** @type {HTMLInputElement} */ (
+    h("input", {
+      type: "search",
+      class: "guidance-input",
+      placeholder:
+        'Search REA\'s installed guidance — "frida", "evidence bundle", "firmware"…',
+      value: state.guidanceQuery ?? "",
+      onkeydown: (event) => {
+        if (/** @type {KeyboardEvent} */ (event).key === "Enter") {
+          runSearch().catch(() => undefined);
+        }
+      },
+    })
+  );
+
+  /** Run one search and render exactly what REA returned. */
+  const runSearch = async () => {
+    const query = input.value;
+    const valid = validateQuery(query);
+    if (!valid.ok) {
+      results.replaceChildren(
+        h("p", { class: "faint small", text: valid.message }),
+      );
+      return;
+    }
+    state.guidanceQuery = query;
+    results.replaceChildren(
+      h("p", { class: "faint small", text: "Searching REA's guidance…" }),
+    );
+    reader.replaceChildren();
+    try {
+      const call = await api.callTool("search_guidance", {
+        query: query.trim(),
+        limit: 10,
+      });
+      const payload = unwrapGuidance(call);
+      const search = guidanceFromSearch(payload);
+      state.guidanceSearch = { query, result: search };
+      renderSearch(search);
+    } catch (error) {
+      state.guidanceSearch = {
+        query,
+        result: {
+          status: "unknown",
+          matches: [],
+          message: errorMessage(error),
+          packageName: null,
+          bundleSha256: null,
+          total: 0,
+        },
+      };
+      renderSearch(state.guidanceSearch.result);
+    }
+  };
+
+  /** @param {import("../guidance.js").GuidanceSearch} search */
+  const renderSearch = (search) => {
+    const summary = h("p", {
+      class:
+        search.status === "matches" ? "faint small" : "notice-note small warn",
+      text: guidanceSummary(search),
+    });
+    // REA's own message wins over a paraphrase when it sent one.
+    const message =
+      search.message === null || search.status === "matches"
+        ? null
+        : h("p", { class: "faint small", text: search.message });
+    results.replaceChildren(
+      summary,
+      ...(message === null ? [] : [message]),
+      ...search.matches.map((match) => matchRow(match)),
+    );
+  };
+
+  /** @param {import("../guidance.js").GuidanceMatch} match */
+  const matchRow = (match) =>
+    h(
+      "button",
+      {
+        class: "guidance-match",
+        type: "button",
+        onclick: () => openSection(match.locator).catch(() => undefined),
+      },
+      h("span", { class: "guidance-heading", text: match.heading }),
+      h("span", { class: "mono faint small", text: match.guide }),
+      match.matchedTerms.length === 0
+        ? null
+        : h("span", {
+            class: "guidance-terms",
+            text: `matched ${match.matchedTerms.join(", ")}`,
+          }),
+      match.context.length === 0
+        ? null
+        : h("span", { class: "guidance-context", text: match.context }),
+    );
+
+  /** @param {string} locator */
+  const openSection = async (locator) => {
+    reader.replaceChildren(
+      h("p", { class: "faint small", text: "Opening section…" }),
+    );
+    try {
+      const call = await api.callTool("read_guidance_section", { locator });
+      const section = guidanceFromSection(unwrapGuidance(call));
+      state.guidanceSection = { ...section, locator };
+      renderSection(section);
+    } catch (error) {
+      state.guidanceSection = null;
+      reader.replaceChildren(
+        h(
+          "div",
+          { class: "notice warn" },
+          h("strong", { text: "REA would not open that section" }),
+          h("p", {
+            text: errorMessage(error),
+          }),
+          h("p", {
+            class: "small",
+            text: "A locator is only valid for the guidance bundle that produced it. Search again after REA updates.",
+          }),
+        ),
+      );
+    }
+  };
+
+  /** @param {import("../guidance.js").GuidanceSectionResult} section */
+  const renderSection = (section) => {
+    reader.replaceChildren(
+      h(
+        "div",
+        { class: "guidance-section" },
+        h(
+          "div",
+          { class: "guidance-section-head" },
+          h("strong", { text: section.heading ?? "Guidance section" }),
+          section.guide === null
+            ? null
+            : h("span", { class: "mono faint small", text: section.guide }),
+          section.packageName === null
+            ? null
+            : h("span", { class: "faint small", text: section.packageName }),
+        ),
+        h("p", {
+          class: "faint small",
+          text: "REA's installed documentation. This describes how to work, not what was found in your target.",
+        }),
+        h("pre", { class: "code-block workflow-text", text: section.content }),
+      ),
+    );
+    // The section is tall; bring it into view rather than silently swapping
+    // content below the fold.
+    reader.scrollIntoView?.({ block: "nearest" });
+  };
+
+  const panel = h(
+    "section",
+    { class: "panel" },
+    sectionHeader(
+      "Guidance search",
+      "REA installs its own documentation bundle; search it here",
+    ),
+    h(
+      "div",
+      { class: "guidance-search" },
+      input,
+      h(
+        "button",
+        {
+          class: "ghost-button small",
+          type: "button",
+          onclick: () => runSearch().catch(() => undefined),
+        },
+        "Search",
+      ),
+    ),
+    h("p", {
+      class: "faint small",
+      text: "A search with no matches says nothing about whether a capability exists — only that REA's bundled documentation does not cover the words you typed.",
+    }),
+    results,
+    reader,
+  );
+
+  // Restore the last search when the view re-renders, so switching tabs does
+  // not discard what the user was reading.
+  if (state.guidanceSearch !== null) renderSearch(state.guidanceSearch.result);
+  if (state.guidanceSection !== null) renderSection(state.guidanceSection);
+
+  return panel;
+};
+
+/**
+ * Tool results arrive wrapped in REA's own `result` envelope; guidance payloads
+ * use the same shape as every other tool, so unwrap once here.
+ *
+ * @param {{ payload?: any } | null | undefined} call
+ */
+const unwrapGuidance = (call) => call?.payload?.result ?? call?.payload ?? null;
