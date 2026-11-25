@@ -220,11 +220,59 @@ export const api = {
   samples: () =>
     request("/api/samples", { method: "POST", body: JSON.stringify({}) }),
 
+  createFolderUpload: (name) =>
+    request("/api/folder-uploads", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+
+  uploadFolderFile: async (folderId, relativePath, file) => {
+    const query = new URLSearchParams({ folderId, path: relativePath });
+    const response = await fetch(`/api/folder-uploads/file?${query}`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/octet-stream",
+        ...(sessionId === null ? {} : { "x-rea-session": sessionId }),
+      },
+      body: file,
+    });
+    const payload = await response.json();
+    if (!response.ok)
+      throw new ApiError(payload?.error?.message ?? "Folder upload failed.", {
+        code: payload?.error?.code ?? "folder_upload_failed",
+        status: response.status,
+      });
+    return payload;
+  },
+
   writeText: (name, text) =>
     request("/api/workspace/text", {
       method: "POST",
       body: JSON.stringify({ name, text }),
     }),
+
+  /** Download one regular file from the active session workspace. */
+  downloadWorkspaceFile: async (name) => {
+    const response = await fetch(
+      `/api/workspace/download?name=${encodeURIComponent(name)}`,
+      {
+        headers: sessionId === null ? {} : { "x-rea-session": sessionId },
+      },
+    );
+    if (!response.ok) {
+      let message = `Download failed with ${response.status}.`;
+      try {
+        message = (await response.json())?.error?.message ?? message;
+      } catch {
+        // Keep the status message when the body is not JSON.
+      }
+      throw new ApiError(message, {
+        code: "workspace_download_failed",
+        status: response.status,
+      });
+    }
+    return response.blob();
+  },
 
   /**
    * Call one MCP tool. Progress notifications arrive through `onProgress`.

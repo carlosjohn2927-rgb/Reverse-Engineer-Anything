@@ -202,19 +202,40 @@ const rail = () =>
 await until(() => /\d+ tools/u.test(rail()));
 check("the built app reaches a session", /\d+ tools/u.test(rail()), rail());
 check(
-  "the built app renders its launchers",
-  window.document.querySelectorAll(".launcher").length === 4,
+  "the built app renders its launchers, including website inspection",
+  window.document.querySelectorAll(".launcher").length === 5 &&
+    [...window.document.querySelectorAll(".launcher")].some((node) =>
+      node.textContent.includes("Inspect a website"),
+    ),
+);
+check(
+  "the built app exposes a prominent Analyse action",
+  [...window.document.querySelectorAll(".hero-actions button")].some((button) =>
+    button.textContent.includes("Analyse selected target"),
+  ),
 );
 
 [...window.document.querySelectorAll(".launcher")]
   .find((node) => node.textContent.includes("built-in sample"))
   ?.click();
-await until(() => window.document.querySelectorAll(".suggestion").length > 0);
+await until(
+  () =>
+    window.document.querySelectorAll(".suggestion").length > 0 &&
+    [...window.document.querySelectorAll(".activity-row")].some((row) =>
+      row.textContent.toLowerCase().includes("inspect-managed-artifact"),
+    ),
+);
+const sampleAnalysisVisible = [
+  ...window.document.querySelectorAll(".activity-row"),
+].some((row) =>
+  row.textContent.toLowerCase().includes("inspect-managed-artifact"),
+);
 check(
-  "the built app derives suggestions",
+  "the built app derives suggestions and analyzes the selected sample",
   window.document.querySelectorAll(".target-row").length === 4 &&
-    window.document.querySelectorAll(".suggestion").length > 0,
-  `${window.document.querySelectorAll(".target-row").length} targets, ${window.document.querySelectorAll(".suggestion").length} suggestions`,
+    window.document.querySelectorAll(".suggestion").length > 0 &&
+    sampleAnalysisVisible,
+  `${window.document.querySelectorAll(".target-row").length} targets, ${window.document.querySelectorAll(".suggestion").length} suggestions, sample analysis ${sampleAnalysisVisible ? "recorded" : "missing"}`,
 );
 
 window.document.querySelector(".suggestion")?.click();
@@ -231,6 +252,23 @@ check(
   meta.includes("Completed") || meta.includes("Failed"),
   meta.slice(0, 100),
 );
+const oldResult = window.document.querySelector(".result-meta");
+window.document.getElementById("drawer-close")?.click();
+window.document.querySelector(".hero-actions button")?.click();
+await until(
+  () =>
+    window.document.querySelector(".result-meta") !== null &&
+    window.document.querySelector(".result-meta") !== oldResult,
+);
+const directAnalysisMeta =
+  window.document.querySelector(".result-meta")?.textContent ?? "";
+check(
+  "Analyse selected target starts another analysis",
+  directAnalysisMeta.includes("Completed") ||
+    directAnalysisMeta.includes("Failed"),
+  directAnalysisMeta.slice(0, 80),
+);
+window.document.getElementById("drawer-close")?.click();
 check(
   "the built app raises no runtime errors",
   errors.length === 0,

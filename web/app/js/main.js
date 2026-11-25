@@ -26,7 +26,7 @@ const VIEWS = {
   },
   targets: {
     title: "Targets",
-    subtitle: "Local folders, uploaded files and generated samples.",
+    subtitle: "Local files and folders, plus pages from a connected browser.",
     render: renderTargets,
   },
   tools: {
@@ -338,6 +338,7 @@ subscribe((change) => {
       toast("View failed to render", errorMessage(error), "error");
     }
   };
+  if (touched("view")) setView(state.view);
   if (touched("evidence")) {
     byId("rail-evidence-count").textContent =
       state.evidence.length === 0 ? "" : String(state.evidence.length);
